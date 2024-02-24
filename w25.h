@@ -31,14 +31,6 @@ int w25_getid();
 
 int w25_read(uint32_t addr, uint8_t *data, uint32_t sz);
 
-int w25_writeenable();
-
-int w25_writedisable();
-
-int w25_waitwrite();
-
-int w25_blockprotect(uint8_t flags);
-
 int w25_write(uint32_t addr, uint8_t *data, uint32_t sz);
 
 int w25_eraseall();
@@ -57,21 +49,21 @@ uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz);
 
 uint32_t w25fs_inodeget(uint32_t n, uint8_t *data, uint32_t sz);
 
-int w25fs_dircreate(char *path);
+int w25fs_dircreate(const char *path);
 
-int w25fs_dirlist(char *path, char *lbuf, size_t sz);
+int w25fs_dirlist(const char *path, char *lbuf, size_t sz);
 
-int w25fs_dirdelete(char *path);
+int w25fs_dirdelete(const char *path);
 
-int w25fs_filewrite(char *path, char *data, size_t sz);
+int w25fs_filewrite(const char *path, const char *data, size_t sz);
 
-int w25fs_fileread(char *path, char *data, size_t sz);
+int w25fs_fileread(const char *path, char *data, size_t sz);
 
-int w25fs_dirstat(char *path, struct w25fs_dirstat *st);
+int w25fs_dirstat(const char *path, struct w25fs_dirstat *st);
 
-int w25fs_splitpath(char *path, char **toks, size_t sz);
+int w25fs_splitpath(const char *path, char **toks, size_t sz);
 
-uint32_t w25fs_dirgetinode(char **path);
+uint32_t w25fs_dirgetinode(const char **path);
 
 char *w25fs_filetype(enum W25FS_INODETYPE type);
 
