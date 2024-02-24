@@ -752,7 +752,6 @@ int w25fs_dirlist(const char *path, char *lbuf, size_t sz)
 	if ((n = w25fs_dirgetinode((const char **) toks)) < 0)
 		return n;
 
-	//w25_read(n, (uint8_t *) (&in), sizeof(struct w25fs_inode));
 	w25fs_readinode(&in, n);
 
 	if (in.type != W25FS_DIR)
