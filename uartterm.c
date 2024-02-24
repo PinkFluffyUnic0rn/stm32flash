@@ -62,10 +62,8 @@ int ut_getcommand()
 		while (HAL_UART_GetState(huart) == HAL_UART_STATE_BUSY_RX);
 
 		if (Rxoffset >= RXBUFSZ - 1 || Rxdata[Rxoffset] == '\r') {
-			uint8_t s[4];
+			uint8_t s[2] = {'\r', '\n'};
 
-			s[0] = '\r';
-			s[1] = '\n';
 			HAL_UART_Transmit(huart, s, 2, 100);
 			
 			if (Rxdata[Rxoffset] == '\r')
@@ -79,6 +77,13 @@ int ut_getcommand()
 			HAL_UART_Transmit(huart, Rxdata + Rxoffset, 1, 100);
 
 			++Rxoffset;
+		}
+		else if (Rxdata[Rxoffset] == 0x08 && Rxoffset > 0) {
+			uint8_t buf[3] = {0x08, ' ', 0x08};
+
+			HAL_UART_Transmit(huart, buf, 3, 100);
+
+			--Rxoffset;
 		}
 	}
 
