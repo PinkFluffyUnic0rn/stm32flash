@@ -10,6 +10,10 @@
 #define W25FS_WRONGADDR 0xffffff02
 #define W25FS_BADDATABLOCK 0xffffff03
 #define W25FS_WRONGSIZE 0xffffff04
+#define W25FS_PATHTOOLONG 0xffffff05
+#define W25FS_INODENOTFOUND 0xffffff06
+#define W25FS_NAMENOTFOUND 0xffffff07
+#define W25FS_NOTADIR 0xffffff08
 
 #define w25fs_iserror(v) ((v) > 0xffffff00)
 
@@ -61,7 +65,7 @@ int w25fs_fileread(const char *path, char *data, size_t sz);
 
 int w25fs_dirstat(const char *path, struct w25fs_dirstat *st);
 
-int w25fs_splitpath(const char *path, char **toks, size_t sz);
+uint32_t w25fs_splitpath(const char *path, char **toks, size_t sz);
 
 uint32_t w25fs_dirgetinode(const char **path);
 
