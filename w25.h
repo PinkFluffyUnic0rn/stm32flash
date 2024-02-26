@@ -6,15 +6,18 @@
 #define W25_BLOCKSIZE (4096 * 16)
 #define W25_TOTALSIZE (1024 * 1024 * 16)
 
-#define W25FS_NODATABLOCKS 0xffffff01
-#define W25FS_WRONGADDR 0xffffff02
-#define W25FS_BADDATABLOCK 0xffffff03
-#define W25FS_WRONGSIZE 0xffffff04
-#define W25FS_PATHTOOLONG 0xffffff05
-#define W25FS_INODENOTFOUND 0xffffff06
-#define W25FS_NAMENOTFOUND 0xffffff07
-#define W25FS_NOTADIR 0xffffff08
+enum W25FS_E {
+	W25FS_ENODATABLOCKS = 0x01,
+	W25FS_EWRONGADDR = 0x02,
+	W25FS_EBADDATABLOCK = 0x03,
+	W25FS_EWRONGSIZE = 0x04,
+	W25FS_EPATHTOOLONG = 0x05,
+	W25FS_EINODENOTFOUND = 0x06,
+	W25FS_ENAMENOTFOUND = 0x07,
+	W25FS_ENOTADIR = 0x08
+};
 
+#define w25fs_uint2interr(v) ((v) & 0xff)
 #define w25fs_iserror(v) ((v) > 0xffffff00)
 
 enum W25FS_INODETYPE {
