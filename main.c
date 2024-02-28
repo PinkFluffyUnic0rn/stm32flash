@@ -181,12 +181,13 @@ int getinode(const char **toks)
 	uint32_t addr;
 	uint8_t buf[1024];
 	char b[4096];
+	uint32_t r;
 
 	sscanf(toks[1], "%lx", &addr);
 
-	w25fs_inodeget(addr, buf, 1024);
+	r = w25fs_inodeget(addr, buf, 1024);
 		
-	sprintf(b, "got data: |%s|\n\r", buf);
+	sprintf(b, "got data: %lx |%s|\n\r", r, buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 	
