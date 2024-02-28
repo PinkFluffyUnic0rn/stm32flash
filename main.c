@@ -306,6 +306,26 @@ int statdir(const char **toks)
 	return 0;
 }
 
+int checksumdata(const char **toks)
+{
+	char b[8192];
+	uint8_t rdata[4096];
+	uint32_t addr;
+	uint32_t sz;
+
+	sscanf(toks[1], "%lx", &addr);
+	sscanf(toks[2], "%lu", &sz);
+
+	memset(rdata, 0, sz);
+	w25_read(addr, rdata, sz);
+
+	sprintf(b, "checksum: %lx\n\r", w25fs_checksum(rdata, sz));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
 int main(void)
 {
 	HAL_Init();
@@ -341,6 +361,7 @@ int main(void)
 	ut_addcommand("path",		splitpath);
 	ut_addcommand("getinode",	dirgetinode);
 	ut_addcommand("stat",		statdir);
+	ut_addcommand("checksum",	checksumdata);
 
 	printhelp();
 

@@ -78,4 +78,6 @@ uint32_t w25fs_dirgetinode(const char **path);
 
 char *w25fs_filetype(enum W25FS_INODETYPE type);
 
+uint32_t w25fs_checksum(uint8_t *buf, uint32_t size);
+
 #endif
