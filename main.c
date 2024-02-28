@@ -41,10 +41,10 @@ int printhelp()
 	char s[4096];
 
 	sprintf(s, "\r\ncommands:\n\r");
-	
+
 	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
 		"r [addr]", "read data at address [addr]");
-	
+
 	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
 		"w [addr] [str]","write string [str] into [addr]");
 
@@ -124,7 +124,7 @@ int writedata(const char **toks)
 
 	w25_erasesector(addr / 4096);
 	w25_write(addr, (uint8_t *) toks[2], strlen(toks[2]) + 1);
-	
+
 	return 0;
 }
 
@@ -139,14 +139,14 @@ int createinode(const char **toks)
 {
 	uint32_t addr;
 	char b[1024];
-	
+
 	sscanf(toks[1], "%ld", &addr);
-	
+
 	sprintf(b, "new inode address: %lx\n\r",
 		w25fs_inodecreate(addr, W25FS_FILE));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
-	
+
 	return 0;
 }
 
@@ -154,24 +154,28 @@ int deleteinode(const char **toks)
 {
 	uint32_t addr;
 	char b[1024];
-	
+
 	sscanf(toks[1], "%lx", &addr);
-	
+
 	sprintf(b, "deleted addr: %lx\n\r",
 		w25fs_inodedelete(addr));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
-	
+
 	return 0;
 }
 
 int setinode(const char **toks)
 {
 	uint32_t addr;
+	char b[1024];
 
 	sscanf(toks[1], "%lx", &addr);
 
-	w25fs_inodeset(addr, (uint8_t *) toks[2], strlen(toks[2]) + 1);
+	sprintf(b, "set data: %ld\n\r",
+		w25fs_inodeset(addr, (uint8_t *) toks[2], strlen(toks[2]) + 1));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
 	return 0;
 }
@@ -186,45 +190,45 @@ int getinode(const char **toks)
 	sscanf(toks[1], "%lx", &addr);
 
 	r = w25fs_inodeget(addr, buf, 1024);
-		
+
 	sprintf(b, "got data: %lx |%s|\n\r", r, buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
-	
+
 	return 0;
 }
 
 int createdir(const char **toks)
 {
 	char buf[1024];
-	
+
 	sprintf(buf, "creating directory: %d\n\r",
 		w25fs_dircreate(toks[1]));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-	
+
 	return 0;
 }
 
 int deletedir(const char **toks)
 {
 	char buf[1024];
-	
+
 	sprintf(buf, "deleting directory: %d\n\r",
 		w25fs_dirdelete(toks[1]));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-	
+
 	return 0;
 }
 
 int writefile(const char **toks)
 {
 	char buf[1024];
-	
+
 	sprintf(buf, "writing file: %d\n\r",
 		w25fs_filewrite(toks[1], toks[2], strlen(toks[2]) + 1));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
 	return 0;
@@ -237,11 +241,11 @@ int readfile(const char **toks)
 	char b[4096];
 
 	w25fs_fileread(toks[1], buf, 1024);
-		
+
 	sprintf(b, "got data: |%s|\n\r", buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
-	
+
 	return 0;
 }
 
@@ -270,7 +274,7 @@ int splitpath(const char **toks)
 
 	for (p = parts; *p != NULL; ++p)
 		sprintf(buf + strlen(buf), "|%s|\n\r", *p);
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
 	return 0;
@@ -282,12 +286,12 @@ int dirgetinode(const char **toks)
 	char *parts[16];
 
 	w25fs_splitpath(toks[1], parts, 16);
-	
+
 	sprintf(buf, "directory inode: %lx\n\r",
 		w25fs_dirgetinode((const char **) parts));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-	
+
 	return 0;
 }
 
@@ -300,7 +304,7 @@ int statdir(const char **toks)
 
 	sprintf(buf, "size: %ld\n\rtype: %s\n\r",
 		stat.size, w25fs_filetype(stat.type));
-	
+
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
 	return 0;
@@ -341,7 +345,7 @@ int main(void)
 
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_Base_Start_IT(&htim2);
-	
+
 	__HAL_TIM_SET_COUNTER(&htim2, 0);
 
 	ut_init(&huart1);
@@ -369,9 +373,9 @@ int main(void)
 
 	while (1) {
 		int c;
-	
+
 		__HAL_TIM_SET_COUNTER(&htim2, 0);
-		
+
 		if (ut_getcommand() == 0) {
 			ut_executecommand();
 			ut_promptcommand();

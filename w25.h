@@ -36,7 +36,7 @@ struct w25fs_dirstat {
 	enum W25FS_INODETYPE type;
 };
 
-int w25_init();
+int w25_init(SPI_HandleTypeDef *hs);
 
 int w25_getid();
 

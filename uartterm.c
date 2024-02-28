@@ -50,7 +50,7 @@ static int parsecommand()
 	Toks[i++] = strtok((char *) Rxdata, " ");
 
 	while (i < MAXTOKS && (Toks[i++] = strtok(NULL, " ")) != NULL);
-	
+
 	return 0;
 }
 
@@ -65,7 +65,7 @@ int ut_getcommand()
 			uint8_t s[2] = {'\r', '\n'};
 
 			HAL_UART_Transmit(huart, s, 2, 100);
-			
+
 			if (Rxdata[Rxoffset] == '\r')
 				Rxdata[Rxoffset] = '\0';
 
@@ -111,7 +111,7 @@ int ut_promptcommand()
 int ut_init(UART_HandleTypeDef *hu)
 {
 	huart = hu;
-	
+
 	Commcount = 0;
 
 	return 0;
