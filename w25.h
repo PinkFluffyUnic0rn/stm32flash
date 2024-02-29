@@ -4,12 +4,13 @@
 #define W25_PAGESIZE 256
 #define W25_SECTORSIZE 4096
 #define W25_BLOCKSIZE (4096 * 16)
-#define W25_TOTALSIZE (1024 * 1024 * 16)
-//#define W25_TOTALSIZE (W25_BLOCKSIZE * 4)
+//#define W25_TOTALSIZE (1024 * 1024 * 16)
+#define W25_TOTALSIZE (W25_BLOCKSIZE * 4)
 
 #define W25FS_PATHMAX 24
 
-enum W25FS_E {
+enum W25FS_ERROR {
+	W25FS_ESUCCESS = 0x00,
 	W25FS_ENODATABLOCKS = 0x01,
 	W25FS_EWRONGADDR = 0x02,
 	W25FS_EBADDATABLOCK = 0x03,
@@ -76,7 +77,9 @@ uint32_t w25fs_splitpath(const char *path, char **toks, size_t sz);
 
 uint32_t w25fs_dirgetinode(const char **path);
 
-char *w25fs_filetype(enum W25FS_INODETYPE type);
+const char *w25fs_strfiletype(enum W25FS_INODETYPE type);
+
+const char *w25fs_strerror(enum W25FS_ERROR e);
 
 uint32_t w25fs_checksum(uint8_t *buf, uint32_t size);
 

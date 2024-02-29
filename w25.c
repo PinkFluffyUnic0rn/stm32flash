@@ -264,8 +264,7 @@ int w25_eraseblock(uint32_t n)
 
 uint32_t w25fs_checksum(uint8_t *buf, uint32_t size)
 {
-	uint32_t chk;
-	int i;
+	uint32_t chk, i;
 
 	chk = 0;
 	for (i = 0; i < size / 4; ++i)
@@ -292,27 +291,26 @@ static int w25fs_readsuperblock(struct w25fs_superblock *sb)
 	return 0;
 }
 
-static int w25fs_writesuperblock(const struct w25fs_superblock *s)
+static int w25fs_writesuperblock(struct w25fs_superblock *sb)
 {
-	struct w25fs_superblock sb;
+	uint32_t dsz;
 	int i;
 
-	memmove(&sb, s, sizeof(sb));
+	dsz = sizeof(struct w25fs_superblock) - sizeof(w25fs_checksum_t);
 
-	sb.checksum = w25fs_checksum(
-		((uint8_t *) &sb) + sizeof(sb.checksum),
- 		sizeof(sb) - sizeof(sb.checksum));
+	sb->checksum = w25fs_checksum(
+		((uint8_t *) sb) + sizeof(w25fs_checksum_t), dsz);
 
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
-		uint8_t buf[sizeof(struct w25fs_superblock)];
+		struct w25fs_superblock sbb;
 
-		w25_rewritesector(0, (uint8_t *) &sb, sizeof(sb));
+		w25_rewritesector(0, (uint8_t *) sb,
+			sizeof(struct w25fs_superblock));
 
-		w25_read(sizeof(sb.checksum), buf,
-			sizeof(sb) - sizeof(sb.checksum));
+		w25_read(0, (uint8_t *) &sbb, sizeof(sbb));
 
-		if (sb.checksum == w25fs_checksum(buf,
-			sizeof(sb) - sizeof(sb.checksum))) {
+		if (sbb.checksum == w25fs_checksum((uint8_t *) &sbb,
+			dsz)) {
 			break;
 		}
 	}
@@ -330,7 +328,7 @@ static uint32_t w25fs_readinode(struct w25fs_inode *in, uint32_t n,
 	inodesector = n / W25_SECTORSIZE * W25_SECTORSIZE;
 	inodesectorn = inodesector / W25_SECTORSIZE;
 	inodeid	= (n - inodesector) / sizeof(struct w25fs_inode);
-
+		
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
 		w25_read(inodesector, (uint8_t *) buf, W25_SECTORSIZE);
 
@@ -381,7 +379,7 @@ static uint32_t w25fs_readdatablock(uint32_t block, uint8_t *data)
 {
 	uint32_t totalsize;
 	int i;
-
+		
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
 		w25fs_checksum_t cs;
 
@@ -505,9 +503,7 @@ uint32_t w25fs_format()
 {
 	struct w25fs_superblock sb;
 	struct w25fs_inode buf[W25FS_INODEPERSECTOR];
-	uint32_t inodecnt;
-	uint32_t p;
-	uint32_t i;
+	uint32_t inodecnt, p, i;
 
 	sb.inodecnt = W25FS_INODESSZ / sizeof(struct w25fs_inode);
 	sb.inodesz = sizeof(struct w25fs_inode);
@@ -608,12 +604,39 @@ uint32_t w25fs_inodedelete(uint32_t n)
 	return 0;
 }
 
+static uint32_t w25fs_inoderesize(uint32_t n, uint32_t sz)
+{
+	struct w25fs_superblock sb;
+	struct w25fs_inode in;
+	uint32_t r;
+
+	w25fs_readsuperblock(&sb);
+	w25fs_readinode(&in, n, &sb);
+
+	if (sz <= in.size)
+		return 0;
+
+	in.size = sz;
+
+	r = w25fs_deletedatablock(in.blocks, &sb);
+	if (w25fs_iserror(r))
+		return r;
+
+	in.blocks = w25fs_createdatablock(&sb, sz);
+	if (w25fs_iserror(in.blocks))
+		return in.blocks;
+
+	w25fs_writeinode(&in, n, &sb);
+	w25fs_writesuperblock(&sb);
+
+	return 0;
+}
+
 uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz)
 {
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
-	uint32_t block;
-	uint32_t step;
+	uint32_t block, step, r;
 	size_t p;
 
 	w25fs_readsuperblock(&sb);
@@ -622,8 +645,8 @@ uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz)
 	if (n < sb.inodestart || n % sb.inodesz)
 		return _W25FS_WRONGADDR;
 
-	if (sz > in.size)
-		return _W25FS_WRONGSIZE;
+	if (w25fs_iserror(r = w25fs_inoderesize(n, sz)))
+		return r;
 
 	step = W25_SECTORSIZE - sizeof(struct w25fs_blockmeta);
 	block = in.blocks;
@@ -635,7 +658,7 @@ uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz)
 
 		meta = w25fs_blockgetmeta(sectorbuf);
 
-		meta->datasize = (sz - p < step) ? (sz - p) : step;
+		meta->datasize = min(sz - p, step);
 
 		memmove(sectorbuf + sizeof(struct w25fs_blockmeta),
 			data + p, meta->datasize);
@@ -652,10 +675,8 @@ uint32_t w25fs_inodeget(uint32_t n, uint8_t *data, uint32_t sz)
 {
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
+	uint32_t block, step;
 	size_t p;
-	uint32_t block;
-	uint32_t len;
-	uint32_t step;
 
 	w25fs_readsuperblock(&sb);
 	w25fs_readinode(&in, n, &sb);
@@ -666,31 +687,28 @@ uint32_t w25fs_inodeget(uint32_t n, uint8_t *data, uint32_t sz)
 	if (sz < in.size)
 		return _W25FS_WRONGSIZE;
 
-	len = in.size;
-
 	step = W25_SECTORSIZE - sizeof(struct w25fs_blockmeta);
 	block = in.blocks;
-	for (p = 0; p < len; p += step) {
+	for (p = 0; p < in.size; p += step) {
 		uint8_t sectorbuf[W25_SECTORSIZE];
-
+		
 		w25fs_readdatablock(block, sectorbuf);
 
 		memmove(data + p, sectorbuf + sizeof(struct w25fs_blockmeta),
-			(sz - p < step) ? (sz - p) : step);
+			min(in.size - p, step));
 
 		block = w25fs_blockgetmeta(sectorbuf)->next;
 	}
 
-	return len;
+	return in.size;
 }
 
 uint32_t w25fs_splitpath(const char *path, char **toks, size_t sz)
 {
-	int i;
 	static char pathbuf[W25FS_DIRRECORDSIZE];
+	int i;
 
-	memmove(pathbuf, path, strlen(path));
-	pathbuf[strlen(path)] = '\0';
+	memmove(pathbuf, path, strlen(path) + 1);
 
 	i = 0;
 
@@ -752,15 +770,19 @@ static uint32_t w25fs_dirsearch(uint8_t *buf, const char *name)
 
 uint32_t w25fs_dirgetinode(const char **path)
 {
+	struct w25fs_superblock sb;
 	uint8_t buf[W25FS_DIRSIZE];
 	uint32_t parn;
 	const char **p;
-
+	
+	w25fs_readsuperblock(&sb);
+	
 	parn = W25FS_ROOTINODE;
+	
 	for (p = path; *p != NULL; ++p) {
 		struct w25fs_inode in;
 
-		w25_read(parn, (uint8_t *) (&in), sizeof(in));
+		w25fs_readinode((&in), parn, &sb);
 
 		if (in.type != W25FS_DIR)
 			return _W25FS_NOTADIR;
@@ -779,9 +801,7 @@ static int w25fs_diradd(uint32_t parn, const char *name, uint32_t n)
 	uint8_t buf[W25FS_DIRSIZE];
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
-	uint32_t offset;
-	uint32_t r;
-	uint32_t b;
+	uint32_t offset, r, b;
 
 	w25fs_readsuperblock(&sb);
 	w25fs_readinode(&in, parn, &sb);
@@ -814,9 +834,7 @@ static int w25fs_dirdeleteinode(uint32_t parn, uint32_t n)
 	uint8_t buf[W25FS_DIRSIZE];
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
-	uint32_t offset, last;
-	uint32_t r;
-	uint32_t b;
+	uint32_t offset, last, r, b;
 
 	w25fs_readsuperblock(&sb);
 	w25fs_readinode(&in, parn, &sb);
@@ -852,8 +870,7 @@ int w25fs_dircreate(const char *path)
 {
 	char *toks[W25FS_PATHMAX];
 	char *fname;
-	uint32_t parn, n;
-	uint32_t b;
+	uint32_t parn, n, b;
 	int tokc;
 
 	tokc = w25fs_splitpath(path, toks, W25FS_PATHMAX);
@@ -881,12 +898,11 @@ int w25fs_dirdelete(const char *path)
 {
 	char *toks[W25FS_PATHMAX];
 	uint32_t parn, n;
-	int tokc;
-	int r;
+	int tokc, r;
 
 	tokc = w25fs_splitpath(path, toks, W25FS_PATHMAX);
 
-	if ((n = w25fs_dirgetinode((const char **) toks)) < 0)
+	if (w25fs_iserror(n = w25fs_dirgetinode((const char **) toks)))
 		return w25fs_uint2interr(n);
 
 	toks[tokc - 1] = NULL;
@@ -909,12 +925,11 @@ int w25fs_dirlist(const char *path, char *lbuf, size_t sz)
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
 	char *toks[W25FS_PATHMAX];
-	uint32_t offset;
-	uint32_t n;
+	uint32_t offset, n;
 
 	w25fs_splitpath(path, toks, W25FS_PATHMAX);
 
-	if ((n = w25fs_dirgetinode((const char **) toks)) < 0)
+	if (w25fs_iserror(n = w25fs_dirgetinode((const char **) toks)))
 		return w25fs_uint2interr(n);
 
 	w25fs_readsuperblock(&sb);
@@ -922,8 +937,8 @@ int w25fs_dirlist(const char *path, char *lbuf, size_t sz)
 
 	if (in.type != W25FS_DIR)
 		return W25FS_ENOTADIR;
-
-	w25fs_inodeget(n, buf, W25FS_DIRSIZE);
+	
+	w25fs_inodeget(n, buf, W25FS_DIRSIZE);	
 
 	lbuf[0] = '\0';
 	for (offset = 0; ; offset += W25FS_DIRRECORDSIZE) {
@@ -952,7 +967,7 @@ int w25fs_filewrite(const char *path, const char *buf, size_t sz)
 
 	w25fs_splitpath(path, toks, W25FS_PATHMAX);
 
-	if ((n = w25fs_dirgetinode((const char **) toks)) < 0)
+	if (w25fs_iserror(n = w25fs_dirgetinode((const char **) toks)))
 		return w25fs_uint2interr(n);
 
 	w25fs_readsuperblock(&sb);
@@ -985,7 +1000,7 @@ int w25fs_fileread(const char *path, char *buf, size_t sz)
 
 	w25fs_splitpath(path, toks, W25FS_PATHMAX);
 
-	if ((n = w25fs_dirgetinode((const char **) toks)) < 0)
+	if (w25fs_iserror(n = w25fs_dirgetinode((const char **) toks)))
 		return n;
 
 	w25fs_readsuperblock(&sb);
@@ -1023,7 +1038,7 @@ int w25fs_dirstat(const char *path, struct w25fs_dirstat *st)
 	return 0;
 }
 
-char *w25fs_filetype(enum W25FS_INODETYPE type)
+const char *w25fs_strfiletype(enum W25FS_INODETYPE type)
 {
 	char *W25FS_FILETYPE[] = {
 		"empty", "file",
@@ -1031,4 +1046,22 @@ char *w25fs_filetype(enum W25FS_INODETYPE type)
 	};
 
 	return W25FS_FILETYPE[type];
+}
+
+const char *w25fs_strerror(enum W25FS_ERROR e)
+{
+	char *strerror[] = {
+		"success",
+		"run out of data blocks",
+		"wrong address",
+		"bad data block",
+		"wrong size",
+		"path is too long",
+		"inode not found",
+		"path not found",
+		"not a directory",
+		"not a regular file"
+	};
+
+	return strerror[e];
 }

@@ -202,8 +202,8 @@ int createdir(const char **toks)
 {
 	char buf[1024];
 
-	sprintf(buf, "creating directory: %d\n\r",
-		w25fs_dircreate(toks[1]));
+	sprintf(buf, "creating directory: %s\n\r",
+		w25fs_strerror(w25fs_dircreate(toks[1])));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -214,8 +214,8 @@ int deletedir(const char **toks)
 {
 	char buf[1024];
 
-	sprintf(buf, "deleting directory: %d\n\r",
-		w25fs_dirdelete(toks[1]));
+	sprintf(buf, "deleting directory: %s\n\r",
+		w25fs_strerror(w25fs_dirdelete(toks[1])));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -226,23 +226,24 @@ int writefile(const char **toks)
 {
 	char buf[1024];
 
-	sprintf(buf, "writing file: %d\n\r",
-		w25fs_filewrite(toks[1], toks[2], strlen(toks[2]) + 1));
+	sprintf(buf, "writing file: %s\n\r",
+		w25fs_strerror(w25fs_filewrite(toks[1], toks[2],
+			strlen(toks[2]) + 1)));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
 	return 0;
 }
 
-
 int readfile(const char **toks)
 {
 	char buf[1024];
 	char b[4096];
+	enum W25FS_ERROR r;
 
-	w25fs_fileread(toks[1], buf, 1024);
+	r = w25fs_fileread(toks[1], buf, 1024);
 
-	sprintf(b, "got data: |%s|\n\r", buf);
+	sprintf(b, "got data (%s): |%s|\n\r", w25fs_strerror(r), buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -251,12 +252,17 @@ int readfile(const char **toks)
 
 int listdir(const char **toks)
 {
-	char buf[4096];
+	char buf[512];
+	char b[1024];
+	enum W25FS_ERROR r;
 
 	buf[0] = '\0';
-	w25fs_dirlist(toks[1], buf, 4096);
+	r = w25fs_dirlist(toks[1], buf, 512);
 
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
+	sprintf(b, "directory list (%s):\n\r%s",
+		w25fs_strerror(r), (r == W25FS_ESUCCESS ? buf : ""));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
 	return 0;
 }
@@ -299,11 +305,13 @@ int statdir(const char **toks)
 {
 	struct w25fs_dirstat stat;
 	char buf[1024];
+	enum W25FS_ERROR r;
 
-	w25fs_dirstat(toks[1], &stat);
+	r = w25fs_dirstat(toks[1], &stat);
 
-	sprintf(buf, "size: %ld\n\rtype: %s\n\r",
-		stat.size, w25fs_filetype(stat.type));
+	sprintf(buf, "result: %s size: %ld\n\rtype: %s\n\r",
+		w25fs_strerror(r),
+		stat.size, w25fs_strfiletype(stat.type));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -357,11 +365,11 @@ int main(void)
 	ut_addcommand("d",		deleteinode);
 	ut_addcommand("s",		setinode);
 	ut_addcommand("g",		getinode);
+	ut_addcommand("list",		listdir);
 	ut_addcommand("create",		createdir);
 	ut_addcommand("delete",		deletedir);
 	ut_addcommand("write",		writefile);
 	ut_addcommand("read",		readfile);
-	ut_addcommand("list",		listdir);
 	ut_addcommand("path",		splitpath);
 	ut_addcommand("getinode",	dirgetinode);
 	ut_addcommand("stat",		statdir);
