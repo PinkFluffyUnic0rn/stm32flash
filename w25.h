@@ -37,13 +37,11 @@ struct w25fs_dirstat {
 	enum W25FS_INODETYPE type;
 };
 
-int w25_init(SPI_HandleTypeDef *hs);
-
-int w25_getid();
+int w25fs_init(SPI_HandleTypeDef *hs);
 
 int w25_read(uint32_t addr, uint8_t *data, uint32_t sz);
 
-int w25_write(uint32_t addr, uint8_t *data, uint32_t sz);
+int w25_write(uint32_t addr, const uint8_t *data, uint32_t sz);
 
 int w25_eraseall();
 
@@ -60,6 +58,8 @@ uint32_t w25fs_inodedelete(uint32_t n);
 uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz);
 
 uint32_t w25fs_inodeget(uint32_t n, uint8_t *data, uint32_t sz);
+
+uint32_t w25fs_checksum(const uint8_t *buf, uint32_t size);
 
 int w25fs_dircreate(const char *path);
 
@@ -80,7 +80,5 @@ uint32_t w25fs_dirgetinode(const char **path);
 const char *w25fs_strfiletype(enum W25FS_INODETYPE type);
 
 const char *w25fs_strerror(enum W25FS_ERROR e);
-
-uint32_t w25fs_checksum(uint8_t *buf, uint32_t size);
 
 #endif

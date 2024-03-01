@@ -42,54 +42,62 @@ int printhelp()
 
 	sprintf(s, "\r\ncommands:\n\r");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"r [addr]", "read data at address [addr]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"w [addr] [str]","write string [str] into [addr]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"f","format flash");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"c [sz]","create inode for data size of [size]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"d [addr]","delete inode with address [addr]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"s [addr] [data]",
 		"set data for inode with address [addr] to [data]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"h [addr] [size]",
+		"calculate checksum for data at [addr] of [size]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"g [addr]",
 		"get data from inode with address [addr]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"create [path]",
 		"create directory [path]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"delete [path]",
 		"delete directory [path]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"write [path] [data]",
 		"write [data] into directory [path], turning it into a file");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"read [path]",
 		"read data from file [path]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"list [path]",
 		"list all subdirectories of directory [path]");
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"stat [path]",
 		"show all attributes of directory [path]");	
 
-	sprintf(s + strlen(s), "\t%-16s%-32s\n\r",
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"path [path]",
+		"split [path] into tokens");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"getinode [path]",
 		"get inode address for directory [path]");
 
@@ -349,7 +357,7 @@ int main(void)
 	tim2_init();
 	usart1_init();
 	spi1_init();
-	w25_init(&hspi1);
+	w25fs_init(&hspi1);
 
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_Base_Start_IT(&htim2);
@@ -365,15 +373,16 @@ int main(void)
 	ut_addcommand("d",		deleteinode);
 	ut_addcommand("s",		setinode);
 	ut_addcommand("g",		getinode);
-	ut_addcommand("list",		listdir);
+	ut_addcommand("h",		checksumdata);
+
 	ut_addcommand("create",		createdir);
 	ut_addcommand("delete",		deletedir);
 	ut_addcommand("write",		writefile);
 	ut_addcommand("read",		readfile);
+	ut_addcommand("list",		listdir);
+	ut_addcommand("stat",		statdir);
 	ut_addcommand("path",		splitpath);
 	ut_addcommand("getinode",	dirgetinode);
-	ut_addcommand("stat",		statdir);
-	ut_addcommand("checksum",	checksumdata);
 
 	printhelp();
 

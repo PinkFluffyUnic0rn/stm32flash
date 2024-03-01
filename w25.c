@@ -57,25 +57,7 @@ static uint8_t Rbuf[4];
 
 SPI_HandleTypeDef *Hspi;
 
-int w25_init(SPI_HandleTypeDef *hs)
-{
-	Hspi = hs;
-
-	HAL_Delay(100);
-
-	Sbuf[0] = 0x66;
-	Sbuf[1] = 0x99;
-
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(Hspi, Sbuf, 2, 5000);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-
-	HAL_Delay(100);
-
-	return 0;
-}
-
-int w25_getid()
+static int w25_getid()
 {
 	Sbuf[0] = 0x9f;
 
@@ -87,19 +69,20 @@ int w25_getid()
 	return ((Rbuf[0] << 16) | (Rbuf[1] << 8) | Rbuf[2]);
 }
 
-int w25_read(uint32_t addr, uint8_t *data, uint32_t sz)
+int w25_init()
 {
-	Sbuf[0] = 0x03;
-	Sbuf[1] = (addr >> 16) & 0xff;
-	Sbuf[2] = (addr >> 8) & 0xff;
-	Sbuf[3] = addr & 0xff;
+	HAL_Delay(100);
+
+	Sbuf[0] = 0x66;
+	Sbuf[1] = 0x99;
 
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(Hspi, Sbuf, 4, 5000);
-	HAL_SPI_Receive(Hspi, data, sz, 5000);
+	HAL_SPI_Transmit(Hspi, Sbuf, 2, 5000);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
 
-	return 0;
+	HAL_Delay(100);
+
+	return w25_getid();
 }
 
 static int w25_writeenable()
@@ -159,7 +142,22 @@ static int w25_blockprotect(uint8_t flags)
 	return 0;
 }
 
-int w25_write(uint32_t addr, uint8_t *data, uint32_t sz)
+int w25_read(uint32_t addr, uint8_t *data, uint32_t sz)
+{
+	Sbuf[0] = 0x03;
+	Sbuf[1] = (addr >> 16) & 0xff;
+	Sbuf[2] = (addr >> 8) & 0xff;
+	Sbuf[3] = addr & 0xff;
+
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+	HAL_SPI_Transmit(Hspi, Sbuf, 4, 5000);
+	HAL_SPI_Receive(Hspi, data, sz, 5000);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+
+	return 0;
+}
+
+int w25_write(uint32_t addr, const uint8_t *data, uint32_t sz)
 {
 	w25_waitwrite();
 
@@ -173,24 +171,12 @@ int w25_write(uint32_t addr, uint8_t *data, uint32_t sz)
 
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
 	HAL_SPI_Transmit(Hspi, Sbuf, 4, 5000);
-	HAL_SPI_Transmit(Hspi, data, sz, 5000);
+	HAL_SPI_Transmit(Hspi, (uint8_t  *) data, sz, 5000);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
 
 	w25_waitwrite();
 	w25_writedisable();
 	w25_blockprotect(0x0f);
-
-	return 0;
-}
-
-int w25_rewritesector(uint32_t addr, uint8_t *data, uint32_t sz)
-{
-	int i;
-
-	w25_erasesector(addr);
-
-	for (i = 0; i < sz; i += min(W25_PAGESIZE, sz - i))
-		w25_write(addr + i, data + i, W25_PAGESIZE);
 
 	return 0;
 }
@@ -262,7 +248,20 @@ int w25_eraseblock(uint32_t n)
 	return 0;
 }
 
-uint32_t w25fs_checksum(uint8_t *buf, uint32_t size)
+static int w25_rewritesector(uint32_t addr, const uint8_t *data,
+	uint32_t sz)
+{
+	int i;
+
+	w25_erasesector(addr);
+
+	for (i = 0; i < sz; i += min(W25_PAGESIZE, sz - i))
+		w25_write(addr + i, data + i, W25_PAGESIZE);
+
+	return 0;
+}
+
+uint32_t w25fs_checksum(const uint8_t *buf, uint32_t size)
 {
 	uint32_t chk, i;
 
@@ -499,6 +498,34 @@ static uint32_t w25fs_deletedatablock(uint32_t block,
 	return 0;
 }
 
+static uint32_t w25fs_inoderesize(uint32_t n, uint32_t sz)
+{
+	struct w25fs_superblock sb;
+	struct w25fs_inode in;
+	uint32_t r;
+
+	w25fs_readsuperblock(&sb);
+	w25fs_readinode(&in, n, &sb);
+
+	if (sz <= in.size)
+		return 0;
+
+	in.size = sz;
+
+	r = w25fs_deletedatablock(in.blocks, &sb);
+	if (w25fs_iserror(r))
+		return r;
+
+	in.blocks = w25fs_createdatablock(&sb, sz);
+	if (w25fs_iserror(in.blocks))
+		return in.blocks;
+
+	w25fs_writeinode(&in, n, &sb);
+	w25fs_writesuperblock(&sb);
+
+	return 0;
+}
+
 uint32_t w25fs_format()
 {
 	struct w25fs_superblock sb;
@@ -597,34 +624,6 @@ uint32_t w25fs_inodedelete(uint32_t n)
 	in.blocks = 0;
 
 	sb.freeinodes = n;
-
-	w25fs_writeinode(&in, n, &sb);
-	w25fs_writesuperblock(&sb);
-
-	return 0;
-}
-
-static uint32_t w25fs_inoderesize(uint32_t n, uint32_t sz)
-{
-	struct w25fs_superblock sb;
-	struct w25fs_inode in;
-	uint32_t r;
-
-	w25fs_readsuperblock(&sb);
-	w25fs_readinode(&in, n, &sb);
-
-	if (sz <= in.size)
-		return 0;
-
-	in.size = sz;
-
-	r = w25fs_deletedatablock(in.blocks, &sb);
-	if (w25fs_iserror(r))
-		return r;
-
-	in.blocks = w25fs_createdatablock(&sb, sz);
-	if (w25fs_iserror(in.blocks))
-		return in.blocks;
 
 	w25fs_writeinode(&in, n, &sb);
 	w25fs_writesuperblock(&sb);
@@ -862,6 +861,15 @@ static int w25fs_dirdeleteinode(uint32_t parn, uint32_t n)
 	memmove(buf + last, (uint8_t *) &b, sizeof(uint32_t));
 
 	w25fs_inodeset(parn, buf, W25FS_DIRSIZE);
+
+	return 0;
+}
+
+int w25fs_init(SPI_HandleTypeDef *hs)
+{
+	Hspi = hs;
+
+	w25_init();
 
 	return 0;
 }
