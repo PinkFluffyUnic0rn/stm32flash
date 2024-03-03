@@ -339,7 +339,9 @@ int checksumdata(const char **toks)
 	memset(rdata, 0, sz);
 	w25_read(addr, rdata, sz);
 
-	sprintf(b, "checksum: %lx\n\r", w25fs_checksum(rdata, sz));
+	sprintf(b, "checksum (%lx %lu): %lx\n\r",
+		addr, sz,
+		w25fs_checksum(rdata, sz));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
