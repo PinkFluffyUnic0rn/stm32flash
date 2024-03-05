@@ -290,6 +290,26 @@ uint32_t w25fs_checksum(const uint8_t *buf, uint32_t size)
 	return chk;
 }
 
+static int w25fs_checkdata(uint32_t addr, uint32_t size,
+	w25fs_checksum_t cs)
+{
+	uint8_t buf[W25_PAGESIZE];
+	uint32_t i, ccs;
+
+	ccs = 0;
+	for (i = 0; i < size; i += W25_PAGESIZE) {
+		uint32_t cursz;
+
+		cursz = min(size - i, W25_PAGESIZE);
+
+		w25_read(addr + i, buf, cursz);
+
+		ccs ^= w25fs_checksum(buf, cursz);
+	}
+
+	return (ccs == cs);
+}
+
 static int w25fs_readsuperblock(struct w25fs_superblock *sb)
 {
 	int i;
@@ -352,7 +372,7 @@ static uint32_t w25fs_readinode(struct w25fs_inode *in, uint32_t n,
 	inodeid	= (n - inodesector) / sizeof(struct w25fs_inode);
 
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
-		uint32_t cs;
+		w25fs_checksum_t cs;
 
 		w25_read(inodesector, (uint8_t *) buf, W25_SECTORSIZE);
 
@@ -387,17 +407,13 @@ static uint32_t w25fs_writeinode(const struct w25fs_inode *in,
 		= w25fs_checksum((uint8_t *) buf, W25_SECTORSIZE);
 
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
-		uint8_t bbuf[W25_SECTORSIZE];
-		uint32_t cs;
-
 		w25_rewritesector(inodesector,
 			(uint8_t *) buf, W25_SECTORSIZE);
 
-		w25_read(inodesector, (uint8_t *) bbuf, W25_SECTORSIZE);
-
-		cs = w25fs_checksum((uint8_t *) bbuf, W25_SECTORSIZE);
-		if (sb->inodechecksum[inodesectorn] == cs)
+		if (w25fs_checkdata(inodesector, W25_SECTORSIZE,
+			sb->inodechecksum[inodesectorn])) {
 			break;
+		}
 
 		HAL_Delay(Delay[i]);
 	}
@@ -433,7 +449,6 @@ static uint32_t w25fs_readdatablock(uint32_t block, uint8_t *data)
 static uint32_t w25fs_writedatablock(uint32_t block, uint8_t *data)
 {
 	struct w25fs_blockmeta *meta;
-	uint8_t buf[W25_SECTORSIZE];
 	uint32_t totalsize;
 	int i;
 
@@ -449,14 +464,13 @@ static uint32_t w25fs_writedatablock(uint32_t block, uint8_t *data)
 
 		w25_rewritesector(block, data, totalsize);
 
-		w25_read(block, buf, totalsize);
+		w25_read(block, (uint8_t *) &cs,
+			sizeof(w25fs_checksum_t));
 
-		cs = w25fs_checksum(
-			buf + sizeof(w25fs_checksum_t),
-			totalsize - sizeof(w25fs_checksum_t));
-
-		if (w25fs_blockgetmeta(buf)->checksum == cs)
+		if (w25fs_checkdata(block + sizeof(w25fs_checksum_t),
+			totalsize - sizeof(w25fs_checksum_t), cs)) {
 			break;
+		}
 
 		HAL_Delay(Delay[i]);
 	}
@@ -575,14 +589,10 @@ static int w25fs_writeinodeblock(uint32_t inodesectorn, uint8_t *buf,
 	w25_writesector(inodesector, buf, W25_SECTORSIZE);
 
 	for (j = 0; j < W25FS_RETRYCOUNT; ++j) {
-		uint8_t bbuf[W25_SECTORSIZE];
-		uint32_t cs;
-
-		w25_read(inodesector, bbuf, W25_SECTORSIZE);
-
-		cs = w25fs_checksum(bbuf, W25_SECTORSIZE);
-		if (sb->inodechecksum[1 + inodesectorn] == cs)
+		if (w25fs_checkdata(inodesector, W25_SECTORSIZE,
+			sb->inodechecksum[1 + inodesectorn])) {
 			break;
+		}
 
 		w25_rewritesector(inodesector, buf, W25_SECTORSIZE);
 
@@ -643,17 +653,19 @@ uint32_t w25fs_format()
 		w25_writesector(p, (uint8_t *) &meta, sizeof(meta));
 
 		for (j = 0; j < W25FS_RETRYCOUNT; ++j) {
-			uint8_t bbuf[W25_SECTORSIZE];
-			uint32_t cs;
+			w25fs_checksum_t cs;
+				
+			w25_read(p, (uint8_t *) &cs,
+				sizeof(w25fs_checksum_t));
 
-			w25_read(p, bbuf, W25_SECTORSIZE);
-
-			cs = w25fs_checksum(
-				bbuf + sizeof(w25fs_checksum_t),
-				totalsize);
-
-			if (w25fs_blockgetmeta(bbuf)->checksum == cs)
+			if (w25fs_checkdata(
+				p + sizeof(w25fs_checksum_t),
+				totalsize, cs)) {
 				break;
+			}
+
+			w25_rewritesector(p, (uint8_t *) &meta,
+				sizeof(meta));
 
 			HAL_Delay(Delay[j]);
 		}
