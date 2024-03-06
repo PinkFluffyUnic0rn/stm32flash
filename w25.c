@@ -68,30 +68,31 @@ struct w25fs_blockmeta {
 
 const int Delay[] = {0, 10, 100, 1000, 5000};
 
-static uint8_t Sbuf[4];
-static uint8_t Rbuf[4];
-
 static int w25_getid(struct w25fs_device *dev)
 {
-	Sbuf[0] = 0x9f;
+	uint8_t sbuf[4], rbuf[4];
+
+	sbuf[0] = 0x9f;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 1, 5000);
-	HAL_SPI_Receive(dev->hspi, Rbuf, 3, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 1, 5000);
+	HAL_SPI_Receive(dev->hspi, rbuf, 3, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
-	return ((Rbuf[0] << 16) | (Rbuf[1] << 8) | Rbuf[2]);
+	return ((rbuf[0] << 16) | (rbuf[1] << 8) | rbuf[2]);
 }
 
 int w25_init(struct w25fs_device *dev)
 {
+	uint8_t sbuf[4];
+
 	HAL_Delay(100);
 
-	Sbuf[0] = 0x66;
-	Sbuf[1] = 0x99;
+	sbuf[0] = 0x66;
+	sbuf[1] = 0x99;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 2, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 2, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	HAL_Delay(100);
@@ -101,10 +102,12 @@ int w25_init(struct w25fs_device *dev)
 
 static int w25_writeenable(struct w25fs_device *dev)
 {
-	Sbuf[0] = 0x06;
+	uint8_t sbuf[4];
+
+	sbuf[0] = 0x06;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 1, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 1, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	return 0;
@@ -112,10 +115,12 @@ static int w25_writeenable(struct w25fs_device *dev)
 
 static int w25_writedisable(struct w25fs_device *dev)
 {
-	Sbuf[0] = 0x04;
+	uint8_t sbuf[4];
+
+	sbuf[0] = 0x04;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 1, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 1, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	return 0;
@@ -123,15 +128,17 @@ static int w25_writedisable(struct w25fs_device *dev)
 
 static int w25_waitwrite(struct w25fs_device *dev)
 {
-	Sbuf[0] = 0x05;
+	uint8_t sbuf[4], rbuf[4];
+
+	sbuf[0] = 0x05;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
 
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 1, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 1, 5000);
 
 	do {
-		HAL_SPI_Receive(dev->hspi, Rbuf, 1, 5000);
-	} while ((Rbuf[0] & 0x01) == 0x01);
+		HAL_SPI_Receive(dev->hspi, rbuf, 1, 5000);
+	} while ((rbuf[0] & 0x01) == 0x01);
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
@@ -140,28 +147,32 @@ static int w25_waitwrite(struct w25fs_device *dev)
 
 static int w25_blockprotect(struct w25fs_device *dev, uint8_t flags)
 {
-	Sbuf[0] = 0x50;
+	uint8_t sbuf[4];
+
+	sbuf[0] = 0x50;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 1, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 1, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
-	Sbuf[0] = 0x01;
-	Sbuf[1] = (flags & 0x0f) << 2;
+	sbuf[0] = 0x01;
+	sbuf[1] = (flags & 0x0f) << 2;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 2, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 2, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	return 0;
 }
 
-int w25_initdevice(struct w25fs_device *dev, SPI_HandleTypeDef *hspi,
+int w25fs_initdevice(struct w25fs_device *dev, SPI_HandleTypeDef *hspi,
 	GPIO_TypeDef *gpio, uint16_t pin)
 {
 	dev->hspi = hspi;
 	dev->gpio = gpio;
 	dev->pin = pin;
+	
+	w25_init(dev);
 
 	return 0;
 }
@@ -169,13 +180,15 @@ int w25_initdevice(struct w25fs_device *dev, SPI_HandleTypeDef *hspi,
 int w25_read(struct w25fs_device *dev, uint32_t addr, uint8_t *data,
 	uint32_t sz)
 {
-	Sbuf[0] = 0x03;
-	Sbuf[1] = (addr >> 16) & 0xff;
-	Sbuf[2] = (addr >> 8) & 0xff;
-	Sbuf[3] = addr & 0xff;
+	uint8_t sbuf[4];
+
+	sbuf[0] = 0x03;
+	sbuf[1] = (addr >> 16) & 0xff;
+	sbuf[2] = (addr >> 8) & 0xff;
+	sbuf[3] = addr & 0xff;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 4, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 4, 5000);
 	HAL_SPI_Receive(dev->hspi, data, sz, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
@@ -185,18 +198,20 @@ int w25_read(struct w25fs_device *dev, uint32_t addr, uint8_t *data,
 int w25_write(struct w25fs_device *dev, uint32_t addr,
 	const uint8_t *data, uint32_t sz)
 {
+	uint8_t sbuf[4];
+
 	w25_waitwrite(dev);
 
 	w25_blockprotect(dev, 0x00);
 	w25_writeenable(dev);
 
-	Sbuf[0] = 0x02;
-	Sbuf[1] = (addr >> 16) & 0xff;
-	Sbuf[2] = (addr >> 8) & 0xff;
-	Sbuf[3] = addr & 0xff;
+	sbuf[0] = 0x02;
+	sbuf[1] = (addr >> 16) & 0xff;
+	sbuf[2] = (addr >> 8) & 0xff;
+	sbuf[3] = addr & 0xff;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 4, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 4, 5000);
 	HAL_SPI_Transmit(dev->hspi, (uint8_t  *) data, sz, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
@@ -209,14 +224,16 @@ int w25_write(struct w25fs_device *dev, uint32_t addr,
 
 int w25_eraseall(struct w25fs_device *dev)
 {
+	uint8_t sbuf[4];
+
 	w25_waitwrite(dev);
 	w25_blockprotect(dev, 0x00);
 	w25_writeenable(dev);
 
-	Sbuf[0] = 0xc7;
+	sbuf[0] = 0xc7;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 1, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 1, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	w25_waitwrite(dev);
@@ -228,17 +245,19 @@ int w25_eraseall(struct w25fs_device *dev)
 
 int w25_erasesector(struct w25fs_device *dev, uint32_t addr)
 {
+	uint8_t sbuf[4];
+
 	w25_waitwrite(dev);
 	w25_blockprotect(dev, 0x00);
 	w25_writeenable(dev);
 
-	Sbuf[0] = 0x20;
-	Sbuf[1] = (addr >> 16) & 0xff;
-	Sbuf[2] = (addr >> 8) & 0xff;
-	Sbuf[3] = addr & 0xff;
+	sbuf[0] = 0x20;
+	sbuf[1] = (addr >> 16) & 0xff;
+	sbuf[2] = (addr >> 8) & 0xff;
+	sbuf[3] = addr & 0xff;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 4, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 4, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	w25_waitwrite(dev);
@@ -250,6 +269,7 @@ int w25_erasesector(struct w25fs_device *dev, uint32_t addr)
 
 int w25_eraseblock(struct w25fs_device *dev, uint32_t n)
 {
+	uint8_t sbuf[4];
 	uint32_t addr;
 
 	w25_waitwrite(dev);
@@ -258,13 +278,13 @@ int w25_eraseblock(struct w25fs_device *dev, uint32_t n)
 
 	addr = n * W25_BLOCKSIZE;
 
-	Sbuf[0] = 0xD8;
-	Sbuf[1] = (addr >> 16) & 0xff;
-	Sbuf[2] = (addr >> 8) & 0xff;
-	Sbuf[3] = addr & 0xff;
+	sbuf[0] = 0xD8;
+	sbuf[1] = (addr >> 16) & 0xff;
+	sbuf[2] = (addr >> 8) & 0xff;
+	sbuf[3] = addr & 0xff;
 
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(dev->hspi, Sbuf, 4, 5000);
+	HAL_SPI_Transmit(dev->hspi, sbuf, 4, 5000);
 	HAL_GPIO_WritePin(dev->gpio, dev->pin, GPIO_PIN_SET);
 
 	w25_waitwrite(dev);
@@ -332,16 +352,16 @@ static int w25fs_checkdata(struct w25fs_device *dev, uint32_t addr,
 static int w25fs_readsuperblock(struct w25fs_device *dev,
 	struct w25fs_superblock *sb)
 {
+	uint32_t sz;
 	int i;
 
-	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
-		w25_read(dev, 0, (uint8_t *) (sb),
-			sizeof(struct w25fs_superblock));
+	sz = sizeof(struct w25fs_superblock);
 
-		if (sb->checksum == w25fs_checksumembed(
-			sb, sizeof(struct w25fs_superblock))) {
+	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
+		w25_read(dev, 0, (uint8_t *) (sb), sz);
+
+		if (sb->checksum == w25fs_checksumembed(sb, sz))
 			break;
-		}
 
 		HAL_Delay(Delay[i]);
 	}
@@ -352,23 +372,23 @@ static int w25fs_readsuperblock(struct w25fs_device *dev,
 static int w25fs_writesuperblock(struct w25fs_device *dev,
 	struct w25fs_superblock *sb)
 {
+	uint32_t sz;
 	int i;
 
-	sb->checksum = w25fs_checksumembed(
-		sb, sizeof(struct w25fs_superblock));
+	sz = sizeof(struct w25fs_superblock);
+
+	sb->checksum = w25fs_checksumembed(sb, sz);
 
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
 		struct w25fs_superblock sbb;
 
-		w25_rewritesector(dev, 0, (uint8_t *) sb,
-			sizeof(struct w25fs_superblock));
+		w25_rewritesector(dev, 0, (uint8_t *) sb, sz);
 
 		w25_read(dev, 0, (uint8_t *) &sbb, sizeof(sbb));
 
-		if (sbb.checksum == w25fs_checksumembed(
-			&sbb, sizeof(struct w25fs_superblock))) {
+		if (sbb.checksum == w25fs_checksumembed(&sbb, sz))
 			break;
-		}
+		
 		HAL_Delay(Delay[i]);
 	}
 
@@ -380,15 +400,15 @@ static uint32_t w25fs_readinode(struct w25fs_device *dev,
 	const struct w25fs_superblock *sb)
 {
 	int i;
+	uint32_t sz;
+
+	sz = sizeof(struct w25fs_inode);
 
 	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
-		w25_read(dev, n, (uint8_t *) in,
-			sizeof(struct w25fs_inode));
+		w25_read(dev, n, (uint8_t *) in, sz);
 
-		if (in->checksum == w25fs_checksumembed(
-			in, sizeof(struct w25fs_inode))) {
+		if (in->checksum == w25fs_checksumembed(in, sz))
 			break;
-		}
 
 		HAL_Delay(Delay[i]);
 	}
@@ -401,19 +421,20 @@ static uint32_t w25fs_writeinode(struct w25fs_device *dev,
 	struct w25fs_superblock *sb)
 {
 	struct w25fs_inode buf[W25FS_INODEPERSECTOR];
-	uint32_t inodesector, inodesectorn, inodeid;
+	uint32_t inodesector, inodesectorn, inodeid, sz;
 	int i;
+
+	sz = sizeof(struct w25fs_inode);
 
 	inodesector = n / W25_SECTORSIZE * W25_SECTORSIZE;
 	inodesectorn = inodesector / W25_SECTORSIZE;
-	inodeid	= (n - inodesector) / sizeof(struct w25fs_inode);
+	inodeid	= (n - inodesector) / sz;
 
 	w25_read(dev, inodesector, (uint8_t *) buf, W25_SECTORSIZE);
 
-	memmove(buf + inodeid, in, sizeof(struct w25fs_inode));
+	memmove(buf + inodeid, in, sz);
 
-	buf[inodeid].checksum = w25fs_checksumembed(
-		buf + inodeid, sizeof(struct w25fs_inode));
+	buf[inodeid].checksum = w25fs_checksumembed(buf + inodeid, sz);
 
 	sb->inodechecksum[inodesectorn]
 		= w25fs_checksum(buf, W25_SECTORSIZE);
@@ -591,7 +612,7 @@ static int w25fs_writeinodeblock(struct w25fs_device *dev,
 	struct w25fs_superblock *sb)
 {
 	uint32_t inodesector;
-	int j;
+	int i;
 
 	inodesector = sb->inodestart + inodesectorn * W25_SECTORSIZE;
 
@@ -600,16 +621,15 @@ static int w25fs_writeinodeblock(struct w25fs_device *dev,
 
 	w25_writesector(dev, inodesector, buf, W25_SECTORSIZE);
 
-	for (j = 0; j < W25FS_RETRYCOUNT; ++j) {
+	for (i = 0; i < W25FS_RETRYCOUNT; ++i) {
 		if (w25fs_checkdata(dev, inodesector, W25_SECTORSIZE,
 			sb->inodechecksum[1 + inodesectorn])) {
 			break;
 		}
 
-		w25_rewritesector(dev, inodesector, buf,
-			W25_SECTORSIZE);
+		w25_rewritesector(dev, inodesector, buf, W25_SECTORSIZE);
 
-		HAL_Delay(Delay[j]);
+		HAL_Delay(Delay[i]);
 	}
 
 	return 0;
@@ -622,7 +642,7 @@ uint32_t w25fs_format(struct w25fs_device *dev)
 	uint32_t inodecnt, p, i;
 
 	w25_eraseall(dev);
-
+	
 	sb.inodecnt = W25FS_INODESSZ / sizeof(struct w25fs_inode);
 	sb.inodesz = sizeof(struct w25fs_inode);
 	sb.inodestart = W25_SECTORSIZE;
@@ -633,6 +653,9 @@ uint32_t w25fs_format(struct w25fs_device *dev)
 	inodecnt = W25FS_INODEPERSECTOR * W25FS_INODESECTORSCOUNT;
 	for (i = 0; i < inodecnt; ++i) {
 		struct w25fs_inode *curin;
+		uint32_t insz;
+
+		insz = sizeof(struct w25fs_inode);
 
 		curin = buf + i % W25FS_INODEPERSECTOR;
 
@@ -641,8 +664,7 @@ uint32_t w25fs_format(struct w25fs_device *dev)
 		curin->size = 0;
 		curin->type = W25FS_EMPTY;
 
-		curin->checksum = w25fs_checksumembed(
-			curin, sizeof(struct w25fs_inode));
+		curin->checksum = w25fs_checksumembed(curin, insz);
 
 		if ((i + 1) % W25FS_INODEPERSECTOR == 0) {
 			w25fs_writeinodeblock(dev,
@@ -655,16 +677,18 @@ uint32_t w25fs_format(struct w25fs_device *dev)
 
 	for (p = W25_BLOCKSIZE; p < W25_TOTALSIZE; p += W25_SECTORSIZE) {
 		struct w25fs_blockmeta meta;
+		uint32_t sz;
 		int j;
+
+		sz = sizeof(meta);
 
 		meta.next = (p + W25_SECTORSIZE >= W25_TOTALSIZE)
 			? 0 : p + W25_SECTORSIZE;
 		meta.datasize = 0;
 
-		meta.checksum = w25fs_checksumembed(
-			&meta, sizeof(meta));
+		meta.checksum = w25fs_checksumembed(&meta, sz);
 
-		w25_writesector(dev, p, (uint8_t *) &meta, sizeof(meta));
+		w25_writesector(dev, p, (uint8_t *) &meta, sz);
 
 		for (j = 0; j < W25FS_RETRYCOUNT; ++j) {
 			w25fs_checksum_t cs;
@@ -672,11 +696,10 @@ uint32_t w25fs_format(struct w25fs_device *dev)
 			w25_read(dev, p, (uint8_t *) &cs,
 				sizeof(w25fs_checksum_t));
 
-			if (w25fs_checkdataembed(dev, p, sizeof(meta), cs))
+			if (w25fs_checkdataembed(dev, p, sz, cs))
 				break;
 
-			w25_rewritesector(dev, p, (uint8_t *) &meta,
-				sizeof(meta));
+			w25_rewritesector(dev, p, (uint8_t *) &meta, sz);
 
 			HAL_Delay(Delay[j]);
 		}
@@ -742,12 +765,11 @@ uint32_t w25fs_inodedelete(struct w25fs_device *dev, uint32_t n)
 }
 
 uint32_t w25fs_inodeset(struct w25fs_device *dev, uint32_t n,
-	uint8_t *data, uint32_t sz)
+	const uint8_t *data, uint32_t sz)
 {
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
-	uint32_t block, step, r;
-	size_t p;
+	uint32_t block, step, r, bsz, p;
 
 	w25fs_readsuperblock(dev, &sb);
 	w25fs_readinode(dev, &in, n, &sb);
@@ -758,7 +780,9 @@ uint32_t w25fs_inodeset(struct w25fs_device *dev, uint32_t n,
 	if (w25fs_iserror(r = w25fs_inoderesize(dev, n, sz)))
 		return r;
 
-	step = W25_SECTORSIZE - sizeof(struct w25fs_blockmeta);
+	bsz = sizeof(struct w25fs_blockmeta);
+
+	step = W25_SECTORSIZE - bsz;
 	block = in.blocks;
 	for (p = 0; p < sz; p += step) {
 		uint8_t sectorbuf[W25_SECTORSIZE];
@@ -770,8 +794,7 @@ uint32_t w25fs_inodeset(struct w25fs_device *dev, uint32_t n,
 
 		meta->datasize = min(sz - p, step);
 
-		memmove(sectorbuf + sizeof(struct w25fs_blockmeta),
-			data + p, meta->datasize);
+		memmove(sectorbuf + bsz, data + p, meta->datasize);
 
 		w25fs_writedatablock(dev, block, sectorbuf);
 
@@ -786,8 +809,7 @@ uint32_t w25fs_inodeget(struct w25fs_device *dev, uint32_t n,
 {
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
-	uint32_t block, step;
-	size_t p;
+	uint32_t block, step, bsz, p;
 
 	w25fs_readsuperblock(dev, &sb);
 	w25fs_readinode(dev, &in, n, &sb);
@@ -798,16 +820,16 @@ uint32_t w25fs_inodeget(struct w25fs_device *dev, uint32_t n,
 	if (sz < in.size)
 		return _W25FS_WRONGSIZE;
 
-	step = W25_SECTORSIZE - sizeof(struct w25fs_blockmeta);
+	bsz = sizeof(struct w25fs_blockmeta);
+
+	step = W25_SECTORSIZE - bsz;
 	block = in.blocks;
 	for (p = 0; p < in.size; p += step) {
 		uint8_t sectorbuf[W25_SECTORSIZE];
 
 		w25fs_readdatablock(dev, block, sectorbuf);
 
-		memmove(data + p,
-			sectorbuf + sizeof(struct w25fs_blockmeta),
-			min(in.size - p, step));
+		memmove(data + p, sectorbuf + bsz, min(in.size - p, step));
 
 		block = w25fs_blockgetmeta(sectorbuf)->next;
 	}
@@ -860,21 +882,22 @@ static uint32_t w25fs_dirfindinode(uint8_t *buf, uint32_t n)
 static uint32_t w25fs_dirsearch(uint8_t *buf, const char *name)
 {
 	uint32_t offset;
+	uint32_t sz;
+
+	sz = sizeof(uint32_t);
 
 	for (offset = 0; ; offset += W25FS_DIRRECORDSIZE) {
 		uint32_t n;
 
 		n = 0xffffffff;
 
-		memmove(&n, buf + offset, sizeof(uint32_t));
+		memmove(&n, buf + offset, sz);
 
 		if (n == 0xffffffff)
 			return _W25FS_NAMENOTFOUND;
 
-		if (strcmp((char *) buf + offset
-				+ sizeof(uint32_t), name) == 0) {
+		if (strcmp((char *) buf + offset + sz, name) == 0)
 			return n;
-		}
 	}
 
 	return _W25FS_NAMENOTFOUND;
@@ -985,7 +1008,8 @@ static int w25fs_dirisempty(struct w25fs_device *dev, uint32_t n)
 	uint8_t buf[W25FS_DIRSIZE];
 	uint32_t r, nn;
 
-	if (w25fs_iserror(r = w25fs_inodeget(dev, n, buf, W25FS_DIRSIZE)))	
+	r = w25fs_inodeget(dev, n, buf, W25FS_DIRSIZE);
+	if (w25fs_iserror(r))	
 		return w25fs_uint2interr(r);
 
 	memmove(&nn, buf, sizeof(uint32_t));
@@ -999,7 +1023,8 @@ static int _w25fs_dirlist(struct w25fs_device *dev, uint32_t n,
 	uint8_t buf[W25FS_DIRSIZE];
 	uint32_t offset, r;
 
-	if (w25fs_iserror(r = w25fs_inodeget(dev, n, buf, W25FS_DIRSIZE)))	
+	r = w25fs_inodeget(dev, n, buf, W25FS_DIRSIZE);
+	if (w25fs_iserror(r))	
 		return w25fs_uint2interr(r);
 
 	lbuf[0] = '\0';
@@ -1016,13 +1041,6 @@ static int _w25fs_dirlist(struct w25fs_device *dev, uint32_t n,
 		strcat(lbuf, (char *) buf + offset + sizeof(uint32_t));
 		strcat(lbuf, "\n\r");
 	}
-
-	return 0;
-}
-
-int w25fs_init(struct w25fs_device *dev)
-{
-	w25_init(dev);
 
 	return 0;
 }
@@ -1111,7 +1129,7 @@ int w25fs_dirlist(struct w25fs_device *dev, const char *path,
 }
 
 int w25fs_filewrite(struct w25fs_device *dev, const char *path,
-	const char *buf, size_t sz)
+	const uint8_t *buf, uint32_t sz)
 {
 	struct w25fs_superblock sb;
 	struct w25fs_inode in;
@@ -1129,7 +1147,8 @@ int w25fs_filewrite(struct w25fs_device *dev, const char *path,
 	in.type = W25FS_FILE;
 	in.size = sz;
 
-	if (w25fs_iserror(r = w25fs_deletedatablock(dev, in.blocks, &sb)))
+	r = w25fs_deletedatablock(dev, in.blocks, &sb);
+	if (w25fs_iserror(r))
 		return w25fs_uint2interr(r);
 
 	in.blocks = w25fs_createdatablock(dev, &sb, sz);
@@ -1139,14 +1158,14 @@ int w25fs_filewrite(struct w25fs_device *dev, const char *path,
 	w25fs_writeinode(dev, &in, n, &sb);
 	w25fs_writesuperblock(dev, &sb);
 
-	if (w25fs_iserror(n = w25fs_inodeset(dev, n, (uint8_t *) buf, sz)))
+	if (w25fs_iserror(n = w25fs_inodeset(dev, n, buf, sz)))
 		return w25fs_uint2interr(n);
 
 	return 0;
 }
 
 int w25fs_fileread(struct w25fs_device *dev, const char *path,
-	char *buf, size_t sz)
+	uint8_t *buf, uint32_t sz)
 {
 	const char *toks[W25FS_PATHMAX];
 	struct w25fs_superblock sb;
@@ -1164,7 +1183,7 @@ int w25fs_fileread(struct w25fs_device *dev, const char *path,
 	if (in.type != W25FS_FILE)
 		return W25FS_ENOTAFILE;
 
-	if (w25fs_iserror(n = w25fs_inodeget(dev, n, (uint8_t *) buf, sz)))
+	if (w25fs_iserror(n = w25fs_inodeget(dev, n, buf, sz)))
 		return w25fs_uint2interr(n);
 
 	return 0;

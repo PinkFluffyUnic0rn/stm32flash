@@ -243,7 +243,8 @@ int writefile(const char **toks)
 	char buf[1024];
 
 	sprintf(buf, "writing file: %s\n\r",
-		w25fs_strerror(w25fs_filewrite(curdev, toks[1], toks[2],
+		w25fs_strerror(w25fs_filewrite(curdev, toks[1],
+			(const uint8_t *) toks[2],
 			strlen(toks[2]) + 1)));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
@@ -253,13 +254,14 @@ int writefile(const char **toks)
 
 int readfile(const char **toks)
 {
-	char buf[1024];
+	uint8_t buf[1024];
 	char b[4096];
 	enum W25FS_ERROR r;
 
 	r = w25fs_fileread(curdev, toks[1], buf, 1024);
 
-	sprintf(b, "got data (%s): |%s|\n\r", w25fs_strerror(r), buf);
+	sprintf(b, "got data (%s): |%s|\n\r", w25fs_strerror(r),
+		(char *) buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -565,12 +567,9 @@ static void usart1_init()
 
 static void flash_init()
 {
-	w25_initdevice(&dev1, &hspi1, GPIOA, GPIO_PIN_4);
-	w25_initdevice(&dev2, &hspi1, GPIOB, GPIO_PIN_3);
+	w25fs_initdevice(&dev1, &hspi1, GPIOA, GPIO_PIN_4);
+	w25fs_initdevice(&dev2, &hspi1, GPIOB, GPIO_PIN_3);
 
-	w25fs_init(&dev1);
-	w25fs_init(&dev2);
-	
 	curdev = &dev1;
 }
 
