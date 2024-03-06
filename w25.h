@@ -57,7 +57,7 @@ uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz);
 
 uint32_t w25fs_inodeget(uint32_t n, uint8_t *data, uint32_t sz);
 
-uint32_t w25fs_checksum(const uint8_t *buf, uint32_t size);
+uint32_t w25fs_checksum(const void *buf, uint32_t size);
 
 int w25fs_dircreate(const char *path);
 
