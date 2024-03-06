@@ -30,50 +30,68 @@ enum W25FS_INODETYPE {
 	W25FS_DIR	= 3
 };
 
+struct w25fs_device {
+	SPI_HandleTypeDef *hspi;
+	GPIO_TypeDef *gpio;
+	uint16_t pin;
+};
+
 struct w25fs_dirstat {
 	uint32_t size;
 	enum W25FS_INODETYPE type;
 };
 
-int w25fs_init(SPI_HandleTypeDef *hs);
+int w25fs_init(struct w25fs_device *dev);
 
-int w25_read(uint32_t addr, uint8_t *data, uint32_t sz);
+int w25_initdevice(struct w25fs_device *dev, SPI_HandleTypeDef *hspi,
+	GPIO_TypeDef *gpio, uint16_t pin);
 
-int w25_write(uint32_t addr, const uint8_t *data, uint32_t sz);
+int w25_read(struct w25fs_device *dev, uint32_t addr, uint8_t *data,
+	uint32_t sz);
 
-int w25_eraseall();
+int w25_write(struct w25fs_device *dev, uint32_t addr,
+	const uint8_t *data, uint32_t sz);
 
-int w25_erasesector(uint32_t n);
+int w25_eraseall(struct w25fs_device *dev);
 
-int w25_eraseblock(uint32_t n);
+int w25_erasesector(struct w25fs_device *dev, uint32_t n);
 
-uint32_t w25fs_format();
+int w25_eraseblock(struct w25fs_device *dev, uint32_t n);
 
-uint32_t w25fs_inodecreate(uint32_t sz, enum W25FS_INODETYPE type);
+uint32_t w25fs_format(struct w25fs_device *dev);
 
-uint32_t w25fs_inodedelete(uint32_t n);
+uint32_t w25fs_inodecreate(struct w25fs_device *dev,
+	uint32_t sz, enum W25FS_INODETYPE type);
 
-uint32_t w25fs_inodeset(uint32_t n, uint8_t *data, uint32_t sz);
+uint32_t w25fs_inodedelete(struct w25fs_device *dev, uint32_t n);
 
-uint32_t w25fs_inodeget(uint32_t n, uint8_t *data, uint32_t sz);
+uint32_t w25fs_inodeset(struct w25fs_device *dev, uint32_t n,
+	uint8_t *data, uint32_t sz);
+
+uint32_t w25fs_inodeget(struct w25fs_device *dev, uint32_t n,
+	uint8_t *data, uint32_t sz);
 
 uint32_t w25fs_checksum(const void *buf, uint32_t size);
 
-int w25fs_dircreate(const char *path);
+int w25fs_dircreate(struct w25fs_device *dev, const char *path);
 
-int w25fs_dirlist(const char *path, char *lbuf, size_t sz);
+int w25fs_dirlist(struct w25fs_device *dev, const char *path,
+	char *lbuf, size_t sz);
 
-int w25fs_dirdelete(const char *path);
+int w25fs_dirdelete(struct w25fs_device *dev, const char *path);
 
-int w25fs_filewrite(const char *path, const char *data, size_t sz);
+int w25fs_filewrite(struct w25fs_device *dev, const char *path,
+	const char *data, size_t sz);
 
-int w25fs_fileread(const char *path, char *data, size_t sz);
+int w25fs_fileread(struct w25fs_device *dev, const char *path,
+	char *data, size_t sz);
 
-int w25fs_dirstat(const char *path, struct w25fs_dirstat *st);
+int w25fs_dirstat(struct w25fs_device *dev, const char *path,
+	struct w25fs_dirstat *st);
 
-uint32_t w25fs_splitpath(const char *path, char **toks, size_t sz);
+uint32_t w25fs_splitpath(const char *path, const char **toks, size_t sz);
 
-uint32_t w25fs_dirgetinode(const char **path);
+uint32_t w25fs_dirgetinode(struct w25fs_device *dev, const char **path);
 
 const char *w25fs_strfiletype(enum W25FS_INODETYPE type);
 
