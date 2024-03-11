@@ -3,8 +3,12 @@
 #include <string.h>
 
 #include "main.h"
+#include "driver.h"
+#include "filesystem.h"
+#include "sfs.h"
 #include "w25.h"
 #include "uartterm.h"
+
 
 #define PRESCALER 72
 #define TIMPERIOD 0xffff
@@ -22,10 +26,11 @@ TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 
-struct w25fs_device dev1;
-struct w25fs_device dev2;
+struct driver drivers[8];
+struct device dev[8];
+struct filesystem fs[8];
 
-struct w25fs_device *curdev;
+struct device *curdev;
 
 void systemclock_config(void);
 static void gpio_init(void);
@@ -123,7 +128,7 @@ int readdata(const char **toks)
 	sscanf(toks[1], "%lx", &addr);
 
 	memset(rdata, 0, 256);
-	w25_read(curdev, addr, rdata, 256);
+	curdev->read(curdev->priv, addr, rdata, 256);
 
 	ut_dumppage(rdata, b, 8192);
 
@@ -138,15 +143,15 @@ int writedata(const char **toks)
 
 	sscanf(toks[1], "%lx", &addr);
 
-	w25_erasesector(curdev, addr / 4096);
-	w25_write(curdev, addr, (uint8_t *) toks[2], strlen(toks[2]) + 1);
+	curdev->erasesector(curdev->priv, addr);
+	curdev->write(curdev->priv, addr, (uint8_t *) toks[2], strlen(toks[2]) + 1);
 
 	return 0;
 }
 
 int format(const char **toks)
 {
-	w25fs_format(curdev);
+	fs[0].format(curdev);
 
 	return 0;
 }
@@ -159,7 +164,7 @@ int createinode(const char **toks)
 	sscanf(toks[1], "%ld", &addr);
 
 	sprintf(b, "new inode address: %lx\n\r",
-		w25fs_inodecreate(curdev, addr, W25FS_FILE));
+		fs[0].inodecreate(curdev, addr, FS_FILE));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -174,7 +179,7 @@ int deleteinode(const char **toks)
 	sscanf(toks[1], "%lx", &addr);
 
 	sprintf(b, "deleted addr: %lx\n\r",
-		w25fs_inodedelete(curdev, addr));
+		fs[0].inodedelete(curdev, addr));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -189,7 +194,7 @@ int setinode(const char **toks)
 	sscanf(toks[1], "%lx", &addr);
 
 	sprintf(b, "set data: %ld\n\r",
-		w25fs_inodeset(curdev, addr, (uint8_t *) toks[2], strlen(toks[2]) + 1));
+		fs[0].inodeset(curdev, addr, (uint8_t *) toks[2], strlen(toks[2]) + 1));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -205,7 +210,7 @@ int getinode(const char **toks)
 
 	sscanf(toks[1], "%lx", &addr);
 
-	r = w25fs_inodeget(curdev, addr, buf, 1024);
+	r = fs[0].inodeget(curdev, addr, buf, 1024);
 
 	sprintf(b, "got data: %lx |%s|\n\r", r, buf);
 
@@ -219,7 +224,7 @@ int createdir(const char **toks)
 	char buf[1024];
 
 	sprintf(buf, "creating directory: %s\n\r",
-		w25fs_strerror(w25fs_dircreate(curdev, toks[1])));
+		fs[0].strerror(fs[0].dircreate(curdev, toks[1])));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -231,7 +236,7 @@ int deletedir(const char **toks)
 	char buf[1024];
 
 	sprintf(buf, "deleting directory: %s\n\r",
-		w25fs_strerror(w25fs_dirdelete(curdev, toks[1])));
+		fs[0].strerror(fs[0].dirdelete(curdev, toks[1])));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -243,7 +248,7 @@ int writefile(const char **toks)
 	char buf[1024];
 
 	sprintf(buf, "writing file: %s\n\r",
-		w25fs_strerror(w25fs_filewrite(curdev, toks[1],
+		fs[0].strerror(fs[0].filewrite(curdev, toks[1],
 			(const uint8_t *) toks[2],
 			strlen(toks[2]) + 1)));
 
@@ -256,11 +261,11 @@ int readfile(const char **toks)
 {
 	uint8_t buf[1024];
 	char b[4096];
-	enum W25FS_ERROR r;
+	enum SFS_ERROR r;
 
-	r = w25fs_fileread(curdev, toks[1], buf, 1024);
+	r = fs[0].fileread(curdev, toks[1], buf, 1024);
 
-	sprintf(b, "got data (%s): |%s|\n\r", w25fs_strerror(r),
+	sprintf(b, "got data (%s): |%s|\n\r", fs[0].strerror(r),
 		(char *) buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
@@ -272,13 +277,13 @@ int listdir(const char **toks)
 {
 	char buf[512];
 	char b[1024];
-	enum W25FS_ERROR r;
+	enum SFS_ERROR r;
 
 	buf[0] = '\0';
-	r = w25fs_dirlist(curdev, toks[1], buf, 512);
+	r = fs[0].dirlist(curdev, toks[1], buf, 512);
 
 	sprintf(b, "directory list (%s):\n\r%s",
-		w25fs_strerror(r), (r == W25FS_ESUCCESS ? buf : ""));
+		fs[0].strerror(r), (r == SFS_ESUCCESS ? buf : ""));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -292,7 +297,7 @@ int splitpath(const char **toks)
 	int partc;
 	const char **p;
 
-	partc = w25fs_splitpath(toks[1], parts, 16);
+	partc = fs[0].splitpath(toks[1], parts, 16);
 
 	sprintf(buf, "afer split (partc: %d):\n\r", partc);
 
@@ -309,10 +314,10 @@ int dirgetinode(const char **toks)
 	char buf[1024];
 	const char *parts[16];
 
-	w25fs_splitpath(toks[1], parts, 16);
+	fs[0].splitpath(toks[1], parts, 16);
 
 	sprintf(buf, "directory inode: %lx\n\r",
-		w25fs_dirgetinode(curdev, (const char **) parts));
+		fs[0].dirgetinode(curdev, (const char **) parts));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -321,15 +326,15 @@ int dirgetinode(const char **toks)
 
 int statdir(const char **toks)
 {
-	struct w25fs_dirstat stat;
+	struct fs_dirstat stat;
 	char buf[1024];
-	enum W25FS_ERROR r;
+	enum SFS_ERROR r;
 
-	r = w25fs_dirstat(curdev, toks[1], &stat);
+	r = fs[0].dirstat(curdev, toks[1], &stat);
 
-	sprintf(buf, "result: %s size: %ld\n\rtype: %s\n\r",
-		w25fs_strerror(r),
-		stat.size, w25fs_strfiletype(stat.type));
+	sprintf(buf, "result: %s\n\rsize: %ld\n\rtype: %s\n\r",
+		fs[0].strerror(r),
+		stat.size, fs[0].strfiletype(stat.type));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -338,7 +343,7 @@ int statdir(const char **toks)
 
 int checksumdata(const char **toks)
 {
-	char b[8192];
+	char b[4096];
 	uint8_t rdata[4096];
 	uint32_t addr;
 	uint32_t sz;
@@ -347,11 +352,10 @@ int checksumdata(const char **toks)
 	sscanf(toks[2], "%lu", &sz);
 
 	memset(rdata, 0, sz);
-	w25_read(curdev, addr, rdata, sz);
+	curdev->read(curdev->priv, addr, rdata, sz);
 
 	sprintf(b, "checksum (%lx %lu): %lx\n\r",
-		addr, sz,
-		w25fs_checksum(rdata, sz));
+		addr, sz, fs[0].checksum(rdata, sz));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -361,9 +365,9 @@ int checksumdata(const char **toks)
 int setdevice(const char **toks)
 {
 	if (strcmp(toks[1], "dev1") == 0)
-		curdev = &dev1;
+		curdev = dev + 0;
 	else if (strcmp(toks[1], "dev2") == 0)
-		curdev = &dev2;
+		curdev = dev + 1;
 
 	return 0;
 }
@@ -567,10 +571,23 @@ static void usart1_init()
 
 static void flash_init()
 {
-	w25fs_initdevice(&dev1, &hspi1, GPIOA, GPIO_PIN_4);
-	w25fs_initdevice(&dev2, &hspi1, GPIOB, GPIO_PIN_3);
+	struct w25_device d;
 
-	curdev = &dev1;
+	w25_getdriver(drivers + 0);
+
+	d.hspi = &hspi1;
+	d.gpio = GPIOA;
+	d.pin = GPIO_PIN_4;
+	drivers[0].initdevice(&d, dev + 0);
+
+	d.hspi = &hspi1;
+	d.gpio = GPIOB;
+	d.pin = GPIO_PIN_3;
+	drivers[0].initdevice(&d, dev + 1);
+
+	curdev = dev;
+
+	sfs_getfs(fs + 0);
 }
 
 void error_handler(void)
