@@ -86,12 +86,12 @@ int printhelp()
 		"delete directory [path]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"write [path] [data]",
-		"write [data] into directory [path], turning it into a file");
+		"set [path] [data]",
+		"set [data] into directory [path], turning it into a file");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"read [path]",
-		"read data from file [path]");
+		"get [path]",
+		"get data from file [path]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"list [path]",
@@ -132,16 +132,16 @@ int printhelp()
 
 int readdata(const char **toks)
 {
-	char b[8192];
-	uint8_t rdata[256];
-	uint32_t addr;
+	char b[2048];
+	char rdata[256];
+	size_t addr;
 
-	sscanf(toks[1], "%lx", &addr);
+	sscanf(toks[1], "%x", &addr);
 
 	memset(rdata, 0, 256);
 	curdev->read(curdev->priv, addr, rdata, 256);
 
-	ut_dumppage(rdata, b, 8192);
+	ut_dumppage(rdata, b, 2048);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -150,12 +150,12 @@ int readdata(const char **toks)
 
 int writedata(const char **toks)
 {
-	uint32_t addr;
+	size_t addr;
 
-	sscanf(toks[1], "%lx", &addr);
+	sscanf(toks[1], "%x", &addr);
 
 	curdev->erasesector(curdev->priv, addr);
-	curdev->write(curdev->priv, addr, (uint8_t *) toks[2], strlen(toks[2]) + 1);
+	curdev->write(curdev->priv, addr, toks[2], strlen(toks[2]) + 1);
 
 	return 0;
 }
@@ -169,12 +169,12 @@ int format(const char **toks)
 
 int createinode(const char **toks)
 {
-	uint32_t addr;
+	size_t addr;
 	char b[1024];
 
-	sscanf(toks[1], "%ld", &addr);
+	sscanf(toks[1], "%d", &addr);
 
-	sprintf(b, "new inode address: %lx\n\r",
+	sprintf(b, "new inode address: %x\n\r",
 		fs[0].inodecreate(curdev, addr, FS_FILE));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
@@ -184,12 +184,12 @@ int createinode(const char **toks)
 
 int deleteinode(const char **toks)
 {
-	uint32_t addr;
+	size_t addr;
 	char b[1024];
 
-	sscanf(toks[1], "%lx", &addr);
+	sscanf(toks[1], "%x", &addr);
 
-	sprintf(b, "deleted addr: %lx\n\r",
+	sprintf(b, "deleted addr: %x\n\r",
 		fs[0].inodedelete(curdev, addr));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
@@ -199,13 +199,13 @@ int deleteinode(const char **toks)
 
 int setinode(const char **toks)
 {
-	uint32_t addr;
+	size_t addr;
 	char b[1024];
 
-	sscanf(toks[1], "%lx", &addr);
+	sscanf(toks[1], "%x", &addr);
 
-	sprintf(b, "set data: %ld\n\r",
-		fs[0].inodeset(curdev, addr, (uint8_t *) toks[2], strlen(toks[2]) + 1));
+	sprintf(b, "set data: %d\n\r",
+		fs[0].inodeset(curdev, addr, toks[2], strlen(toks[2]) + 1));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -214,16 +214,16 @@ int setinode(const char **toks)
 
 int getinode(const char **toks)
 {
-	uint32_t addr;
+	size_t addr;
 	uint8_t buf[1024];
 	char b[4096];
-	uint32_t r;
+	size_t r;
 
-	sscanf(toks[1], "%lx", &addr);
+	sscanf(toks[1], "%x", &addr);
 
 	r = fs[0].inodeget(curdev, addr, buf, 1024);
 
-	sprintf(b, "got data: %lx |%s|\n\r", r, buf);
+	sprintf(b, "got data: %x |%s|\n\r", r, buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -260,7 +260,7 @@ int setfile(const char **toks)
 
 	sprintf(buf, "writing file: %s\n\r",
 		vfs_strerror(fs[0].filewrite(curdev, toks[1],
-			(const uint8_t *) toks[2],
+			toks[2],
 			strlen(toks[2]) + 1)));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
@@ -301,40 +301,6 @@ int listdir(const char **toks)
 	return 0;
 }
 
-int splitpath(const char **toks)
-{
-	char buf[1024];
-	const char *parts[16];
-	int partc;
-	const char **p;
-
-	partc = fs[0].splitpath(toks[1], parts, 16);
-
-	sprintf(buf, "afer split (partc: %d):\n\r", partc);
-
-	for (p = parts; *p != NULL; ++p)
-		sprintf(buf + strlen(buf), "|%s|\n\r", *p);
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
-int dirgetinode(const char **toks)
-{
-	char buf[1024];
-	const char *parts[16];
-
-	fs[0].splitpath(toks[1], parts, 16);
-
-	sprintf(buf, "directory inode: %lx\n\r",
-		fs[0].dirgetinode(curdev, (const char **) parts));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
 int statdir(const char **toks)
 {
 	struct fs_dirstat stat;
@@ -343,32 +309,11 @@ int statdir(const char **toks)
 
 	r = fs[0].dirstat(curdev, toks[1], &stat);
 
-	sprintf(buf, "result: %s\n\rsize: %ld\n\rtype: %s\n\r",
+	sprintf(buf, "result: %s\n\rsize: %d\n\rtype: %s\n\r",
 		vfs_strerror(r), stat.size,
 		fs_strfiletype(stat.type));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
-int checksumdata(const char **toks)
-{
-	char b[4096];
-	uint8_t rdata[4096];
-	uint32_t addr;
-	uint32_t sz;
-
-	sscanf(toks[1], "%lx", &addr);
-	sscanf(toks[2], "%lu", &sz);
-
-	memset(rdata, 0, sz);
-	curdev->read(curdev->priv, addr, rdata, sz);
-
-	sprintf(b, "checksum (%lx %lu): %lx\n\r",
-		addr, sz, fs[0].checksum(rdata, sz));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
 	return 0;
 }
@@ -525,7 +470,6 @@ int main(void)
 	ut_addcommand("d",		deleteinode);
 	ut_addcommand("s",		setinode);
 	ut_addcommand("g",		getinode);
-	ut_addcommand("h",		checksumdata);
 
 	ut_addcommand("device",		setdevice);
 	ut_addcommand("create",		createdir);
@@ -534,8 +478,6 @@ int main(void)
 	ut_addcommand("get",		getfile);
 	ut_addcommand("list",		listdir);
 	ut_addcommand("stat",		statdir);
-	ut_addcommand("path",		splitpath);
-	ut_addcommand("getinode",	dirgetinode);	
 	ut_addcommand("mount",		mounthandler);
 	ut_addcommand("umount",		umounthandler);
 	ut_addcommand("mountlist",	mountlisthandler);

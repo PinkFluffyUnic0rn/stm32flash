@@ -24,7 +24,7 @@ static UART_HandleTypeDef *huart;
 static struct ut_command Commtable[32];
 static size_t Commcount;
 
-int ut_dumppage(uint8_t *data, char *text, size_t sz)
+int ut_dumppage(void *data, char *text, size_t sz)
 {
 	int r, i;
 
@@ -32,7 +32,7 @@ int ut_dumppage(uint8_t *data, char *text, size_t sz)
 
 	for (i = 0; i < 256; ++i) {
 		r += snprintf(text + r, sz - r,
-			" %02x", data[i]);
+			" %02x", ((uint8_t *) data)[i]);
 		if ((i + 1) % 16 == 0)
 			r += snprintf(text + r, sz - r , "\n\r");
 	}

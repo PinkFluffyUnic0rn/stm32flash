@@ -10,6 +10,8 @@
 #define PATHMAXTOK 24
 #define PATHMAX 128
 #define MOUNTMAX 8
+#define FDMAX 4
+#define ERRORMAX 0xff
 
 enum ERROR {
 	ESUCCESS	= 0x00,
@@ -40,8 +42,8 @@ int open(const char *path, int flags);
 int close(int fd);
 int write(int fd, const void *buf, size_t count);
 int read(int fd, void *buf, size_t count);
-int ioctl(int fd, uint32_t req, ...);
-int lseek(int fd, uint32_t offset);
+int ioctl(int fd, int req, ...);
+int lseek(int fd, size_t offset);
 const char *vfs_strerror(enum ERROR e);
 
 #endif

@@ -4,27 +4,27 @@
 #include <stdio.h>
 
 struct vfsmount {
-	struct device *dev;
-	const char *mountpoint[PATHMAXTOK];
-	char mountpointbuf[PATHMAX];
-	const struct filesystem *fs;
+	struct device 	*dev;
+	const char	*mountpoint[PATHMAXTOK];
+	char		mountpointbuf[PATHMAX];
+	const struct 	filesystem *fs;
 };
 
 struct inode {
-	struct vfsmount *mount;
-	fsaddr_t addr;
+	struct vfsmount 	*mount;
+	size_t 			addr;
 };
 
 struct file {
 	char		path[PATHMAX];
 	char		name[PATHMAX];
 	int	 	flags;
-	uint32_t	offset;
+	size_t		offset;
 	struct inode	inode;
 };
 
+struct file files[FDMAX];
 int fileset;
-struct file files[sizeof(uint32_t)];
 
 struct vfsmount mounts[MOUNTMAX];
 int mountset;
@@ -204,7 +204,7 @@ int open(const char *path, int flags)
 	const char *curpath[PATHMAXTOK];
 	char pathbuf[PATHMAX], dirbuf[FS_MAXDIR];
 	int mountid, curmountid, fd, r, c;
-	fsaddr_t parn, rr;
+	size_t parn, rr;
 	const char **p;
 
 	strcpy(pathbuf, path);
@@ -239,11 +239,11 @@ int open(const char *path, int flags)
 		if (st.type != FS_DIR)
 			return ENOTADIR;
 
-		rr = fs->inodeget(dev, parn, (uint8_t *) dirbuf, FS_MAXDIR);
+		rr = fs->inodeget(dev, parn, dirbuf, FS_MAXDIR);
 		if (fs_iserror(rr))
 			return fs_uint2interr(rr);
 
-		parn = fs->dirsearch((uint8_t *) dirbuf, *p);
+		parn = fs->dirsearch(dirbuf, *p);
 		if (fs_iserror(parn))
 			return ENAMENOTFOUND;
 
@@ -251,7 +251,7 @@ int open(const char *path, int flags)
 		curpath[c] = NULL;
 	}
 
-	if ((fd = allocinset(&fileset)) < 0)
+	if ((fd = allocinset(&fileset)) < 0 || fd >= FDMAX)
 		return ERUNOUTOFFD;
 
 	strcpy(files[fd].path, path);
@@ -277,7 +277,7 @@ int close(int fd)
 int write(int fd, const void *buf, size_t count)
 {
 	struct vfsmount *mnt;
-	fsaddr_t r;
+	size_t r;
 
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
@@ -295,7 +295,7 @@ int write(int fd, const void *buf, size_t count)
 int read(int fd, void *buf, size_t count)
 {
 	struct vfsmount *mnt;
-	fsaddr_t r;
+	size_t r;
 
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
@@ -310,7 +310,7 @@ int read(int fd, void *buf, size_t count)
 	return 0;
 }
 
-int ioctl(int fd, uint32_t req, ...)
+int ioctl(int fd, int req, ...)
 {
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
@@ -319,7 +319,7 @@ int ioctl(int fd, uint32_t req, ...)
 	return 0;
 }
 
-int lseek(int fd, uint32_t offset)
+int lseek(int fd, size_t offset)
 {
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;

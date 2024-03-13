@@ -106,7 +106,7 @@ static int w25_blockprotect(struct w25_device *dev, uint8_t flags)
 	return 0;
 }
 
-int w25_read(void *d, uint32_t addr, uint8_t *data, size_t sz)
+int w25_read(void *d, size_t addr, void *data, size_t sz)
 {
 	struct w25_device *dev;
 	uint8_t sbuf[4];
@@ -126,7 +126,7 @@ int w25_read(void *d, uint32_t addr, uint8_t *data, size_t sz)
 	return 0;
 }
 
-int w25_write(void *d, uint32_t addr, const uint8_t *data, size_t sz)
+int w25_write(void *d, size_t addr, const void *data, size_t sz)
 {
 	struct w25_device *dev;
 	uint8_t sbuf[4];
@@ -179,7 +179,7 @@ int w25_eraseall(void *d)
 	return 0;
 }
 
-int w25_erasesector(void *d, uint32_t addr)
+int w25_erasesector(void *d, size_t addr)
 {
 	struct w25_device *dev;
 	uint8_t sbuf[4];
@@ -206,7 +206,7 @@ int w25_erasesector(void *d, uint32_t addr)
 	return 0;
 }
 
-int w25_writesector(void *d, uint32_t addr, const uint8_t *data,
+int w25_writesector(void *d, size_t addr, const void *data,
 	size_t sz)
 {
 	struct w25_device *dev;

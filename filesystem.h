@@ -3,9 +3,6 @@
 
 #include "driver.h"
 
-#define fsaddr_t uint32_t
-#define fssize_t uint32_t
-
 #define FS_ENODATABLOCKS	0xffffff01
 #define FS_EWRONGADDR		0xffffff02
 #define FS_EBADDATABLOCK	0xffffff03
@@ -32,31 +29,27 @@ enum FS_INODETYPE {
 };
 
 struct fs_dirstat {
-	fssize_t size;
-	enum FS_INODETYPE type;
+	size_t			size;
+	enum FS_INODETYPE	type;
 };
 
 struct filesystem {
 	const char *name;
 
-	fsaddr_t (*checksum)(const void *buf, fsaddr_t size);
-	fsaddr_t (*splitpath)(const char *path, const char **toks,
-		size_t sz);
-
-	fsaddr_t (*format)(struct device *dev);
-	fsaddr_t (*inodecreate)(struct device *dev,
-		fssize_t sz, enum FS_INODETYPE type);
-	fsaddr_t (*inodedelete)(struct device *dev, fsaddr_t n);
-	fsaddr_t (*inodeset)(struct device *dev, fsaddr_t n,
-		const uint8_t *data, fssize_t sz);
-	fsaddr_t (*inodeget)(struct device *dev, fsaddr_t n,
-		uint8_t *data, fssize_t sz);
-	fsaddr_t (*dirsearch)(uint8_t *buf, const char *name);
-	fsaddr_t (*diradd)(struct device *dev, fsaddr_t parn,
-		const char *name, fsaddr_t n);
-	fsaddr_t (*dirdeleteinode)(struct device *dev,
-		fsaddr_t parn, fsaddr_t n);
-	int (*inodestat)(struct device *dev, fsaddr_t n,
+	size_t (*format)(struct device *dev);
+	size_t (*inodecreate)(struct device *dev,
+		size_t sz, enum FS_INODETYPE type);
+	size_t (*inodedelete)(struct device *dev, size_t n);
+	size_t (*inodeset)(struct device *dev, size_t n,
+		const void *data, size_t sz);
+	size_t (*inodeget)(struct device *dev, size_t n,
+		void *data, size_t sz);
+	size_t (*dirsearch)(void *buf, const char *name);
+	size_t (*diradd)(struct device *dev, size_t parn,
+		const char *name, size_t n);
+	size_t (*dirdeleteinode)(struct device *dev,
+		size_t parn, size_t n);
+	int (*inodestat)(struct device *dev, size_t n,
 		struct fs_dirstat *st);
 
 	int (*dircreate)(struct device *dev, const char *path);
@@ -64,14 +57,14 @@ struct filesystem {
 		char *lbuf, size_t sz);
 	int (*dirdelete)(struct device *dev, const char *path);
 	int (*filewrite)(struct device *dev, const char *path,
-		const uint8_t *data, fsaddr_t sz);
+		const void *data, size_t sz);
 	int (*fileread)(struct device *dev, const char *path,
-		uint8_t *data, fsaddr_t sz);
+		void *data, size_t sz);
 	int (*dirstat)(struct device *dev, const char *path,
 		struct fs_dirstat *st);
-	fsaddr_t (*dirgetinode)(struct device *dev, const char **path);
+	size_t (*dirgetinode)(struct device *dev, const char **path);
 
-	fsaddr_t rootinode;
+	size_t rootinode;
 };
 
 const char *fs_strfiletype(enum FS_INODETYPE type);

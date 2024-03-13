@@ -7,6 +7,7 @@
 #include "sfs.h"
 
 #define sfs_checksum_t uint32_t
+#define fssize_t uint32_t
 
 // values from underlying block device
 #define SFS_WRITESIZE 256
@@ -23,7 +24,7 @@
 
 #define sfs_blockgetmeta(b) (((struct sfs_blockmeta *) (b)))
 #define sfs_checksumembed(buf, size) \
-	sfs_checksum((uint8_t *) (buf) + sizeof(sfs_checksum_t), \
+	sfs_checksum((char *) (buf) + sizeof(sfs_checksum_t), \
 			(size) - sizeof(sfs_checksum_t))
 #define sfs_checkdataembed(dev, addr, size, cs) \
 	sfs_checkdata(dev, (addr) + sizeof(sfs_checksum_t), \
@@ -31,39 +32,39 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 
 struct sfs_superblock {
-	sfs_checksum_t checksum;
-	fssize_t inodecnt;
-	fssize_t inodesz;
-	fsaddr_t inodestart;
-	fsaddr_t freeinodes;
-	fsaddr_t blockstart;
-	fsaddr_t freeblocks;
-	sfs_checksum_t inodechecksum[SFS_INODESECTORSCOUNT + 1];
+	sfs_checksum_t	checksum;
+	fssize_t	inodecnt;
+	fssize_t	inodesz;
+	fssize_t	inodestart;
+	fssize_t	freeinodes;
+	fssize_t	blockstart;
+	fssize_t	freeblocks;
+	sfs_checksum_t	inodechecksum[SFS_INODESECTORSCOUNT + 1];
 } __attribute__((packed));
 
 struct sfs_inode {
-	sfs_checksum_t checksum;
-	fsaddr_t nextfree;
-	fsaddr_t blocks;
-	fssize_t size;
-	uint32_t type;
-	uint32_t dummy0;
-	uint32_t dummy1;
-	uint32_t dummy2;
+	sfs_checksum_t	checksum;
+	fssize_t	nextfree;
+	fssize_t	blocks;
+	fssize_t	size;
+	uint32_t	type;
+	fssize_t	dummy0;
+	fssize_t	dummy1;
+	fssize_t	dummy2;
 } __attribute__((packed));
 
 struct sfs_blockmeta {
-	sfs_checksum_t checksum;
-	fsaddr_t next;
-	fssize_t datasize;
+	sfs_checksum_t	checksum;
+	fssize_t	next;
+	fssize_t	datasize;
 } __attribute__((packed));
 
 const int Delay[] = {0, 10, 100, 1000, 5000};
 
 int sfs_dircreate(struct device *dev, const char *path);
 
-static int sfs_rewritesector(struct device *dev, fsaddr_t addr,
-	const uint8_t *data, fssize_t sz)
+static int sfs_rewritesector(struct device *dev, size_t addr,
+	const void *data, size_t sz)
 {
 	int i;
 
@@ -75,26 +76,28 @@ static int sfs_rewritesector(struct device *dev, fsaddr_t addr,
 	return 0;
 }
 
-uint32_t sfs_checksum(const void *buf, fssize_t size)
+static sfs_checksum_t sfs_checksum(const void *buf, size_t size)
 {
-	uint32_t chk, i;
+	sfs_checksum_t chk;
+	size_t i;
 
 	chk = 0;
-	for (i = 0; i < size / 4; ++i)
-		chk ^= ((uint32_t *) buf)[i];
+	for (i = 0; i < size / sizeof(sfs_checksum_t); ++i)
+		chk ^= ((sfs_checksum_t *) buf)[i];
 
 	return chk;
 }
 
-static int sfs_checkdata(struct device *dev, fsaddr_t addr,
-	fssize_t size, sfs_checksum_t cs)
+static int sfs_checkdata(struct device *dev, size_t addr,
+	size_t size, sfs_checksum_t cs)
 {
-	uint8_t buf[SFS_WRITESIZE];
-	uint32_t i, ccs;
+	char buf[SFS_WRITESIZE];
+	size_t i;
+	sfs_checksum_t ccs;
 
 	ccs = 0;
 	for (i = 0; i < size; i += SFS_WRITESIZE) {
-		fssize_t cursz;
+		size_t cursz;
 
 		cursz = min(size - i, SFS_WRITESIZE);
 
@@ -109,13 +112,13 @@ static int sfs_checkdata(struct device *dev, fsaddr_t addr,
 static int sfs_readsuperblock(struct device *dev,
 	struct sfs_superblock *sb)
 {
-	fssize_t sz;
+	size_t sz;
 	int i;
 
 	sz = sizeof(struct sfs_superblock);
 
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
-		dev->read(dev->priv, 0, (uint8_t *) (sb), sz);
+		dev->read(dev->priv, 0, sb, sz);
 
 		if (sb->checksum == sfs_checksumembed(sb, sz))
 			break;
@@ -129,7 +132,7 @@ static int sfs_readsuperblock(struct device *dev,
 static int sfs_writesuperblock(struct device *dev,
 	struct sfs_superblock *sb)
 {
-	fssize_t sz;
+	size_t sz;
 	int i;
 
 	sz = sizeof(struct sfs_superblock);
@@ -139,9 +142,10 @@ static int sfs_writesuperblock(struct device *dev,
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
 		struct sfs_superblock sbb;
 
-		sfs_rewritesector(dev, 0, (uint8_t *) sb, sz);
+		sfs_rewritesector(dev, 0, sb, sz);
 
-		dev->read(dev->priv, 0, (uint8_t *) &sbb, sizeof(sbb));
+		dev->read(dev->priv, 0, &sbb,
+			sizeof(struct sfs_superblock));
 
 		if (sbb.checksum == sfs_checksumembed(&sbb, sz))
 			break;
@@ -152,16 +156,16 @@ static int sfs_writesuperblock(struct device *dev,
 	return 0;
 }
 
-static fsaddr_t sfs_readinode(struct device *dev, struct sfs_inode *in,
-	fsaddr_t n, const struct sfs_superblock *sb)
+static size_t sfs_readinode(struct device *dev, struct sfs_inode *in,
+	size_t n, const struct sfs_superblock *sb)
 {
 	int i;
-	fssize_t sz;
+	size_t sz;
 
 	sz = sizeof(struct sfs_inode);
 
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
-		dev->read(dev->priv, n, (uint8_t *) in, sz);
+		dev->read(dev->priv, n, in, sz);
 
 		if (in->checksum == sfs_checksumembed(in, sz))
 			break;
@@ -172,12 +176,12 @@ static fsaddr_t sfs_readinode(struct device *dev, struct sfs_inode *in,
 	return 0;
 }
 
-static fsaddr_t sfs_writeinode(struct device *dev,
-	const struct sfs_inode *in, fsaddr_t n,
+static size_t sfs_writeinode(struct device *dev,
+	const struct sfs_inode *in, size_t n,
 	struct sfs_superblock *sb)
 {
 	struct sfs_inode buf[SFS_INODEPERSECTOR];
-	fsaddr_t inodesector, inodesectorn, inodeid, sz;
+	size_t inodesector, inodesectorn, inodeid, sz;
 	int i;
 
 	sz = sizeof(struct sfs_inode);
@@ -186,7 +190,7 @@ static fsaddr_t sfs_writeinode(struct device *dev,
 	inodesectorn = inodesector / SFS_SECTORSIZE;
 	inodeid	= (n - inodesector) / sz;
 
-	dev->read(dev->priv, inodesector, (uint8_t *) buf, SFS_SECTORSIZE);
+	dev->read(dev->priv, inodesector, buf, SFS_SECTORSIZE);
 
 	memmove(buf + inodeid, in, sz);
 
@@ -196,8 +200,7 @@ static fsaddr_t sfs_writeinode(struct device *dev,
 		= sfs_checksum(buf, SFS_SECTORSIZE);
 
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
-		sfs_rewritesector(dev, inodesector,
-			(uint8_t *) buf, SFS_SECTORSIZE);
+		sfs_rewritesector(dev, inodesector, buf, SFS_SECTORSIZE);
 
 		if (sfs_checkdata(dev, inodesector, SFS_SECTORSIZE,
 			sb->inodechecksum[inodesectorn])) {
@@ -210,10 +213,10 @@ static fsaddr_t sfs_writeinode(struct device *dev,
 	return 0;
 }
 
-static fsaddr_t sfs_readdatablock(struct device *dev,
-	fsaddr_t block, uint8_t *data)
+static size_t sfs_readdatablock(struct device *dev,
+	size_t block, void *data)
 {
-	fssize_t totalsize;
+	size_t totalsize;
 	int i;
 
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
@@ -235,11 +238,11 @@ static fsaddr_t sfs_readdatablock(struct device *dev,
 	return 0;
 }
 
-static fsaddr_t sfs_writedatablock(struct device *dev,
-	fsaddr_t block, uint8_t *data)
+static size_t sfs_writedatablock(struct device *dev,
+	size_t block, void *data)
 {
 	struct sfs_blockmeta *meta;
-	fssize_t totalsize;
+	size_t totalsize;
 	int i;
 
 	meta = sfs_blockgetmeta(data);
@@ -253,8 +256,7 @@ static fsaddr_t sfs_writedatablock(struct device *dev,
 
 		sfs_rewritesector(dev, block, data, totalsize);
 
-		dev->read(dev->priv, block, (uint8_t *) &cs,
-			sizeof(sfs_checksum_t));
+		dev->read(dev->priv, block, &cs, sizeof(sfs_checksum_t));
 
 		if (sfs_checkdataembed(dev, block, totalsize, cs))
 			break;
@@ -265,10 +267,10 @@ static fsaddr_t sfs_writedatablock(struct device *dev,
 	return 0;
 }
 
-static fsaddr_t sfs_createdatablock(struct device *dev,
-	struct sfs_superblock *sb, fssize_t sz)
+static size_t sfs_createdatablock(struct device *dev,
+	struct sfs_superblock *sb, size_t sz)
 {
-	fsaddr_t block, cursector, nextsector, restsz;
+	size_t block, cursector, nextsector, restsz;
 	struct sfs_blockmeta meta;
 
 	block = sb->freeblocks;
@@ -276,7 +278,7 @@ static fsaddr_t sfs_createdatablock(struct device *dev,
 	restsz = sz + sz / SFS_SECTORSIZE * sizeof(meta);
 	cursector = nextsector = sb->freeblocks;
 	while (restsz > 0 && nextsector != 0) {
-		uint8_t buf[SFS_SECTORSIZE];
+		char buf[SFS_SECTORSIZE];
 
 		cursector = nextsector;
 
@@ -296,15 +298,15 @@ static fsaddr_t sfs_createdatablock(struct device *dev,
 	meta.next = 0;
 	meta.datasize = 0;
 
-	sfs_writedatablock(dev, cursector, (uint8_t *) (&meta));
+	sfs_writedatablock(dev, cursector, &meta);
 
 	return block;
 }
 
-static fsaddr_t sfs_deletedatablock(struct device *dev,
-	fsaddr_t block, struct sfs_superblock *sb)
+static size_t sfs_deletedatablock(struct device *dev,
+	size_t block, struct sfs_superblock *sb)
 {
-	fsaddr_t cursector, nextsector;
+	size_t cursector, nextsector;
 	struct sfs_blockmeta meta;
 
 	if (block % SFS_SECTORSIZE || block < sb->blockstart)
@@ -312,7 +314,7 @@ static fsaddr_t sfs_deletedatablock(struct device *dev,
 
 	cursector = nextsector = block;
 	while (nextsector != 0) {
-		uint8_t buf[SFS_SECTORSIZE];
+		char buf[SFS_SECTORSIZE];
 
 		cursector = nextsector;
 
@@ -327,19 +329,18 @@ static fsaddr_t sfs_deletedatablock(struct device *dev,
 	meta.next = sb->freeblocks;
 	meta.datasize = 0;
 
-	sfs_writedatablock(dev, cursector, (uint8_t *) (&meta));
+	sfs_writedatablock(dev, cursector, &meta);
 
 	sb->freeblocks = block;
 
 	return 0;
 }
 
-static fsaddr_t sfs_inoderesize(struct device *dev, fsaddr_t n,
-	fssize_t sz)
+static size_t sfs_inoderesize(struct device *dev, size_t n, size_t sz)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t r;
+	size_t r;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, n, &sb);
@@ -364,9 +365,9 @@ static fsaddr_t sfs_inoderesize(struct device *dev, fsaddr_t n,
 }
 
 static int sfs_writeinodeblock(struct device *dev,
-	fsaddr_t inodesectorn, uint8_t *buf, struct sfs_superblock *sb)
+	size_t inodesectorn, void *buf, struct sfs_superblock *sb)
 {
-	fsaddr_t inodesector;
+	size_t inodesector;
 	int i;
 
 	inodesector = sb->inodestart + inodesectorn * SFS_SECTORSIZE;
@@ -390,11 +391,11 @@ static int sfs_writeinodeblock(struct device *dev,
 	return 0;
 }
 
-fsaddr_t sfs_format(struct device *dev)
+size_t sfs_format(struct device *dev)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode buf[SFS_INODEPERSECTOR];
-	fsaddr_t inodecnt, p, i;
+	size_t inodecnt, p, i;
 
 	dev->eraseall(dev->priv);
 	
@@ -408,7 +409,7 @@ fsaddr_t sfs_format(struct device *dev)
 	inodecnt = SFS_INODEPERSECTOR * SFS_INODESECTORSCOUNT;
 	for (i = 0; i < inodecnt; ++i) {
 		struct sfs_inode *curin;
-		fssize_t insz;
+		size_t insz;
 
 		insz = sizeof(struct sfs_inode);
 
@@ -423,8 +424,7 @@ fsaddr_t sfs_format(struct device *dev)
 
 		if ((i + 1) % SFS_INODEPERSECTOR == 0) {
 			sfs_writeinodeblock(dev,
-				i / SFS_INODEPERSECTOR,
-				(uint8_t *) buf, &sb);
+				i / SFS_INODEPERSECTOR, buf, &sb);
 		}
 	}
 
@@ -432,10 +432,10 @@ fsaddr_t sfs_format(struct device *dev)
 
 	for (p = sb.freeblocks; p < dev->totalsize; p += SFS_SECTORSIZE) {
 		struct sfs_blockmeta meta;
-		fssize_t sz;
+		size_t sz;
 		int j;
 
-		sz = sizeof(meta);
+		sz = sizeof(struct sfs_blockmeta);
 
 		meta.next = (p + SFS_SECTORSIZE >= dev->totalsize)
 			? 0 : p + SFS_SECTORSIZE;
@@ -443,18 +443,18 @@ fsaddr_t sfs_format(struct device *dev)
 
 		meta.checksum = sfs_checksumembed(&meta, sz);
 
-		dev->writesector(dev->priv, p, (uint8_t *) &meta, sz);
+		dev->writesector(dev->priv, p, &meta, sz);
 
 		for (j = 0; j < SFS_RETRYCOUNT; ++j) {
 			sfs_checksum_t cs;
 
-			dev->read(dev->priv, p, (uint8_t *) &cs,
+			dev->read(dev->priv, p, &cs,
 				sizeof(sfs_checksum_t));
 
 			if (sfs_checkdataembed(dev, p, sz, cs))
 				break;
 
-			sfs_rewritesector(dev, p, (uint8_t *) &meta, sz);
+			sfs_rewritesector(dev, p, &meta, sz);
 
 			HAL_Delay(Delay[j]);
 		}
@@ -463,12 +463,12 @@ fsaddr_t sfs_format(struct device *dev)
 	return sfs_dircreate(dev, "/");
 }
 
-fsaddr_t sfs_inodecreate(struct device *dev, fsaddr_t sz,
+size_t sfs_inodecreate(struct device *dev, size_t sz,
 	enum FS_INODETYPE type)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t oldfree;
+	size_t oldfree;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, sb.freeinodes, &sb);
@@ -490,11 +490,11 @@ fsaddr_t sfs_inodecreate(struct device *dev, fsaddr_t sz,
 	return oldfree;
 }
 
-fsaddr_t sfs_inodedelete(struct device *dev, fsaddr_t n)
+size_t sfs_inodedelete(struct device *dev, size_t n)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t r;
+	size_t r;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, n, &sb);
@@ -519,12 +519,12 @@ fsaddr_t sfs_inodedelete(struct device *dev, fsaddr_t n)
 	return 0;
 }
 
-fsaddr_t sfs_inodeset(struct device *dev, fsaddr_t n,
-	const uint8_t *data, fssize_t sz)
+size_t sfs_inodeset(struct device *dev, size_t n,
+	const void *data, size_t sz)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t block, step, r, bsz, p;
+	size_t block, step, r, bsz, p;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, n, &sb);
@@ -540,7 +540,7 @@ fsaddr_t sfs_inodeset(struct device *dev, fsaddr_t n,
 	step = SFS_SECTORSIZE - bsz;
 	block = in.blocks;
 	for (p = 0; p < sz; p += step) {
-		uint8_t sectorbuf[SFS_SECTORSIZE];
+		char sectorbuf[SFS_SECTORSIZE];
 		struct sfs_blockmeta *meta;
 
 		sfs_readdatablock(dev, block, sectorbuf);
@@ -559,12 +559,11 @@ fsaddr_t sfs_inodeset(struct device *dev, fsaddr_t n,
 	return 0;
 }
 
-fsaddr_t sfs_inodeget(struct device *dev, fsaddr_t n,
-	uint8_t *data, fssize_t sz)
+size_t sfs_inodeget(struct device *dev, size_t n, void *data, size_t sz)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t block, step, bsz, p;
+	size_t block, step, bsz, p;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, n, &sb);
@@ -580,7 +579,7 @@ fsaddr_t sfs_inodeget(struct device *dev, fsaddr_t n,
 	step = SFS_SECTORSIZE - bsz;
 	block = in.blocks;
 	for (p = 0; p < in.size; p += step) {
-		uint8_t sectorbuf[SFS_SECTORSIZE];
+		char sectorbuf[SFS_SECTORSIZE];
 
 		sfs_readdatablock(dev, block, sectorbuf);
 
@@ -592,7 +591,8 @@ fsaddr_t sfs_inodeget(struct device *dev, fsaddr_t n,
 	return in.size;
 }
 
-fsaddr_t sfs_splitpath(const char *path, const char **toks, size_t sz)
+static size_t sfs_splitpath(const char *path,
+	const char **toks, size_t sz)
 {
 	static char pathbuf[SFS_DIRRECORDSIZE];
 	int i;
@@ -616,16 +616,16 @@ fsaddr_t sfs_splitpath(const char *path, const char **toks, size_t sz)
 	return i;
 }
 
-static fsaddr_t sfs_dirfindinode(uint8_t *buf, fsaddr_t n)
+static size_t sfs_dirfindinode(void *buf, size_t n)
 {
-	fsaddr_t offset;
+	size_t offset;
 
 	for (offset = 0; ; offset += SFS_DIRRECORDSIZE) {
-		fsaddr_t nn;
+		size_t nn;
 
 		nn = 0xffffffff;
 
-		memmove(&nn, buf + offset, sizeof(fsaddr_t));
+		memmove(&nn, buf + offset, sizeof(fssize_t));
 
 		if (nn == n)
 			return offset;
@@ -634,15 +634,15 @@ static fsaddr_t sfs_dirfindinode(uint8_t *buf, fsaddr_t n)
 	return FS_EINODENOTFOUND;
 }
 
-static fsaddr_t sfs_dirsearch(uint8_t *buf, const char *name)
+static size_t sfs_dirsearch(void *buf, const char *name)
 {
-	fsaddr_t offset;
-	fssize_t sz;
+	size_t offset;
+	size_t sz;
 
-	sz = sizeof(uint32_t);
+	sz = sizeof(fssize_t);
 
 	for (offset = 0; ; offset += SFS_DIRRECORDSIZE) {
-		fsaddr_t n;
+		size_t n;
 
 		n = 0xffffffff;
 
@@ -658,11 +658,11 @@ static fsaddr_t sfs_dirsearch(uint8_t *buf, const char *name)
 	return FS_ENAMENOTFOUND;
 }
 
-fsaddr_t sfs_dirgetinode(struct device *dev, const char **path)
+size_t sfs_dirgetinode(struct device *dev, const char **path)
 {
 	struct sfs_superblock sb;
-	uint8_t buf[SFS_DIRSIZE];
-	fsaddr_t parn;
+	char buf[SFS_DIRSIZE];
+	size_t parn;
 	const char **p;
 
 	sfs_readsuperblock(dev, &sb);
@@ -686,13 +686,13 @@ fsaddr_t sfs_dirgetinode(struct device *dev, const char **path)
 	return parn;
 }
 
-fsaddr_t sfs_diradd(struct device *dev, fsaddr_t parn,
-	const char *name, fsaddr_t n)
+size_t sfs_diradd(struct device *dev, size_t parn,
+	const char *name, size_t n)
 {
-	uint8_t buf[SFS_DIRSIZE];
+	char buf[SFS_DIRSIZE];
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t offset, r, b;
+	size_t offset, r, b;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, parn, &sb);
@@ -706,12 +706,11 @@ fsaddr_t sfs_diradd(struct device *dev, fsaddr_t parn,
 
 	offset = sfs_dirfindinode(buf, 0xffffffff);
 
-	memmove(buf + offset, (uint8_t *) &n, sizeof(uint32_t));
-	strcpy((char *) buf + offset + sizeof(uint32_t), name);
+	memmove(buf + offset, &n, sizeof(fssize_t));
+	strcpy((char *) buf + offset + sizeof(fssize_t), name);
 
 	b = 0xffffffff;
-	memmove(buf + offset + SFS_DIRRECORDSIZE,
-		(uint8_t *) &b, sizeof(uint32_t));
+	memmove(buf + offset + SFS_DIRRECORDSIZE, &b, sizeof(fssize_t));
 
 	if ((fs_iserror(parn = sfs_inodeset(dev, parn, buf,
 			SFS_DIRSIZE)))) {
@@ -721,13 +720,12 @@ fsaddr_t sfs_diradd(struct device *dev, fsaddr_t parn,
 	return 0;
 }
 
-fsaddr_t sfs_dirdeleteinode(struct device *dev,
-	fsaddr_t parn, fsaddr_t n)
+size_t sfs_dirdeleteinode(struct device *dev, size_t parn, size_t n)
 {
-	uint8_t buf[SFS_DIRSIZE];
+	char buf[SFS_DIRSIZE];
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t offset, last, r, b;
+	size_t offset, last, r, b;
 
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, parn, &sb);
@@ -751,19 +749,19 @@ fsaddr_t sfs_dirdeleteinode(struct device *dev,
 	memmove(buf + offset, buf + last, SFS_DIRRECORDSIZE);
 
 	b = 0xffffffff;
-	memmove(buf + last, (uint8_t *) &b, sizeof(uint32_t));
+	memmove(buf + last, &b, sizeof(fssize_t));
 
 	sfs_inodeset(dev, parn, buf, SFS_DIRSIZE);
 
 	return 0;
 }
 
-static int sfs_dirisempty(struct device *dev, fsaddr_t n)
+static int sfs_dirisempty(struct device *dev, size_t n)
 {
-	uint8_t buf[SFS_DIRSIZE];
+	char buf[SFS_DIRSIZE];
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t r, nn;
+	size_t r, nn;
 	
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, n, &sb);
@@ -775,16 +773,16 @@ static int sfs_dirisempty(struct device *dev, fsaddr_t n)
 	if (fs_iserror(r))	
 		return fs_uint2interr(r);
 
-	memmove(&nn, buf, sizeof(uint32_t));
+	memmove(&nn, buf, sizeof(fssize_t));
 
 	return ((nn != 0xffffffff) ? EDIRNOTEMPTY : 0);
 }
 
-static int _sfs_dirlist(struct device *dev, fsaddr_t n,
+static int _sfs_dirlist(struct device *dev, size_t n,
 	char *lbuf, size_t sz)
 {
-	uint8_t buf[SFS_DIRSIZE];
-	fsaddr_t offset, r;
+	char buf[SFS_DIRSIZE];
+	size_t offset, r;
 
 	r = sfs_inodeget(dev, n, buf, SFS_DIRSIZE);
 	if (fs_iserror(r))	
@@ -792,16 +790,16 @@ static int _sfs_dirlist(struct device *dev, fsaddr_t n,
 
 	lbuf[0] = '\0';
 	for (offset = 0; ; offset += SFS_DIRRECORDSIZE) {
-		fsaddr_t nn;
+		size_t nn;
 
 		nn = 0xffffffff;
 
-		memmove(&nn, buf + offset, sizeof(fsaddr_t));
+		memmove(&nn, buf + offset, sizeof(fssize_t));
 
 		if (nn == 0xffffffff)
 			break;
 
-		strcat(lbuf, (char *) buf + offset + sizeof(fsaddr_t));
+		strcat(lbuf, (char *) buf + offset + sizeof(fssize_t));
 		strcat(lbuf, "\n\r");
 	}
 
@@ -812,7 +810,7 @@ int sfs_dircreate(struct device *dev, const char *path)
 {
 	const char *toks[SFS_PATHMAX];
 	const char *fname;
-	fsaddr_t parn, n, b;
+	size_t parn, n, b;
 	int tokc;
 
 	tokc = sfs_splitpath(path, toks, SFS_PATHMAX);
@@ -827,7 +825,7 @@ int sfs_dircreate(struct device *dev, const char *path)
 		return fs_uint2interr(n);
 
 	b = 0xffffffff;
-	sfs_inodeset(dev, n, (uint8_t *) &b, sizeof(uint32_t));
+	sfs_inodeset(dev, n, &b, sizeof(fssize_t));
 
 	if (tokc == 0)
 		return 0;
@@ -844,7 +842,7 @@ int sfs_dircreate(struct device *dev, const char *path)
 int sfs_dirdelete(struct device *dev, const char *path)
 {
 	const char *toks[SFS_PATHMAX];
-	fsaddr_t parn, n;
+	size_t parn, n;
 	int tokc, r;
 
 	tokc = sfs_splitpath(path, toks, SFS_PATHMAX);
@@ -875,7 +873,7 @@ int sfs_dirlist(struct device *dev, const char *path,
 	struct sfs_superblock sb;
 	struct sfs_inode in;
 	const char *toks[SFS_PATHMAX];
-	fsaddr_t n;
+	size_t n;
 
 	sfs_splitpath(path, toks, SFS_PATHMAX);
 
@@ -892,12 +890,12 @@ int sfs_dirlist(struct device *dev, const char *path,
 }
 
 int sfs_filewrite(struct device *dev, const char *path,
-	const uint8_t *buf, fssize_t sz)
+	const void *buf, size_t sz)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
 	const char *toks[SFS_PATHMAX];
-	fsaddr_t n, r;
+	size_t n, r;
 
 	sfs_splitpath(path, toks, SFS_PATHMAX);
 
@@ -928,12 +926,12 @@ int sfs_filewrite(struct device *dev, const char *path,
 }
 
 int sfs_fileread(struct device *dev, const char *path,
-	uint8_t *buf, fssize_t sz)
+	void *buf, size_t sz)
 {
 	const char *toks[SFS_PATHMAX];
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	fsaddr_t n;
+	size_t n;
 
 	sfs_splitpath(path, toks, SFS_PATHMAX);
 
@@ -958,7 +956,7 @@ int sfs_dirstat(struct device *dev, const char *path,
 	struct sfs_superblock sb;
 	struct sfs_inode in;
 	const char *toks[SFS_PATHMAX];
-	fsaddr_t n;
+	size_t n;
 	int r;
 
 	if ((r = sfs_splitpath(path, toks, SFS_PATHMAX)) < 0)
@@ -976,8 +974,7 @@ int sfs_dirstat(struct device *dev, const char *path,
 	return 0;
 }
 
-int sfs_inodestat(struct device *dev, fsaddr_t n,
-	struct fs_dirstat *st)
+int sfs_inodestat(struct device *dev, size_t n, struct fs_dirstat *st)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
@@ -994,8 +991,6 @@ int sfs_inodestat(struct device *dev, fsaddr_t n,
 int sfs_getfs(struct filesystem *fs)
 {
 	fs->name = "sfs";
-	fs->checksum = sfs_checksum;
-	fs->splitpath = sfs_splitpath;
 	fs->format = sfs_format;
 	fs->inodecreate = sfs_inodecreate;
 	fs->inodedelete = sfs_inodedelete;

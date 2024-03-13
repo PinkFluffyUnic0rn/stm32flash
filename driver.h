@@ -5,19 +5,19 @@
 #include <stddef.h>
 
 enum DEVTYPE {
-	DEVTYPE_CHAR = 0,
-	DEVTYPE_BLOCK = 1
+	DEVTYPE_CHAR	= 0,
+	DEVTYPE_BLOCK	= 1
 };
 
 struct device {
 	enum DEVTYPE type;
-	int (*read)(void *dev, uint32_t addr, uint8_t *data, size_t sz);
-	int (*write)(void *dev, uint32_t addr, const uint8_t *data,
+	int (*read)(void *dev, size_t addr, void *data, size_t sz);
+	int (*write)(void *dev, size_t addr, const void *data,
 		size_t sz);
 
 	int (*eraseall)(void *dev);
-	int (*erasesector)(void *dev, uint32_t addr);
-	int (*writesector)(void *dev, uint32_t addr, const uint8_t *data,
+	int (*erasesector)(void *dev, size_t addr);
+	int (*writesector)(void *dev, size_t addr, const void *data,
 		size_t sz);
 
 	size_t writesize;

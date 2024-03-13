@@ -1,7 +1,7 @@
 #ifndef UARTTERM_H
 #define UARTTERM_H
 
-int ut_dumppage(uint8_t *data, char *text, size_t sz);
+int ut_dumppage(void *data, char *text, size_t sz);
 
 int ut_getcommand();
 
