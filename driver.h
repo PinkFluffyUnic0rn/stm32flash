@@ -1,6 +1,9 @@
 #ifndef DRIVER_H
 #define DRIVER_H
 
+#include <stdint.h>
+#include <stddef.h>
+
 enum DEVTYPE {
 	DEVTYPE_CHAR = 0,
 	DEVTYPE_BLOCK = 1

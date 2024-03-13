@@ -19,6 +19,8 @@
 #define FS_EDIRNOTEMPTY		0xffffff0a
 #define FS_EALREADYEXISTS	0xffffff0b
 
+#define FS_MAXDIR		4096
+
 #define fs_uint2interr(v) (-((v) & 0xff))
 #define fs_iserror(v) ((v) > 0xffffff00)
 
@@ -27,21 +29,6 @@ enum FS_INODETYPE {
 	FS_FILE		= 1,
 	FS_DEV		= 2,
 	FS_DIR		= 3
-};
-
-enum SFS_ERROR {
-	SFS_ESUCCESS		= 0x00,
-	SFS_ENODATABLOCKS	= -0x01,
-	SFS_EWRONGADDR		= -0x02,
-	SFS_EBADDATABLOCK	= -0x03,
-	SFS_EWRONGSIZE		= -0x04,
-	SFS_EPATHTOOLONG	= -0x05,
-	SFS_EINODENOTFOUND	= -0x06,
-	SFS_ENAMENOTFOUND	= -0x07,
-	SFS_ENOTADIR		= -0x08,
-	SFS_ENOTAFILE		= -0x09,
-	SFS_EDIRNOTEMPTY	= -0x0a,
-	SFS_EALREADYEXISTS	= -0x0b
 };
 
 struct fs_dirstat {
@@ -69,6 +56,8 @@ struct filesystem {
 		const char *name, fsaddr_t n);
 	fsaddr_t (*dirdeleteinode)(struct device *dev,
 		fsaddr_t parn, fsaddr_t n);
+	int (*inodestat)(struct device *dev, fsaddr_t n,
+		struct fs_dirstat *st);
 
 	int (*dircreate)(struct device *dev, const char *path);
 	int (*dirlist)(struct device *dev, const char *path,
@@ -81,8 +70,10 @@ struct filesystem {
 	int (*dirstat)(struct device *dev, const char *path,
 		struct fs_dirstat *st);
 	fsaddr_t (*dirgetinode)(struct device *dev, const char **path);
-	const char *(*strfiletype)(enum FS_INODETYPE type);
-	const char *(*strerror)(enum SFS_ERROR e);
+
+	fsaddr_t rootinode;
 };
+
+const char *fs_strfiletype(enum FS_INODETYPE type);
 
 #endif

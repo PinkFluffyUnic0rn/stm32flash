@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "vfs.h"
+
 #include "sfs.h"
 
 #define sfs_checksum_t uint32_t
@@ -568,7 +570,7 @@ fsaddr_t sfs_inodeget(struct device *dev, fsaddr_t n,
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (n < sb.inodestart || n % sb.inodesz)
-		return SFS_EWRONGADDR;
+		return EWRONGADDR;
 
 	if (sz < in.size)
 		return FS_EWRONGSIZE;
@@ -775,7 +777,7 @@ static int sfs_dirisempty(struct device *dev, fsaddr_t n)
 
 	memmove(&nn, buf, sizeof(uint32_t));
 
-	return ((nn != 0xffffffff) ? SFS_EDIRNOTEMPTY : 0);
+	return ((nn != 0xffffffff) ? EDIRNOTEMPTY : 0);
 }
 
 static int _sfs_dirlist(struct device *dev, fsaddr_t n,
@@ -817,7 +819,7 @@ int sfs_dircreate(struct device *dev, const char *path)
 
 	if (tokc != 0 && sfs_dirgetinode(dev, toks)
 			!= FS_ENAMENOTFOUND) {
-		return SFS_EALREADYEXISTS;
+		return EALREADYEXISTS;
 	}
 
 	n = sfs_inodecreate(dev, SFS_DIRSIZE, FS_DIR);
@@ -884,7 +886,7 @@ int sfs_dirlist(struct device *dev, const char *path,
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (in.type != FS_DIR)
-		return SFS_ENOTADIR;
+		return ENOTADIR;
 
 	return _sfs_dirlist(dev, n, lbuf, sz);
 }
@@ -942,7 +944,7 @@ int sfs_fileread(struct device *dev, const char *path,
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (in.type != FS_FILE)
-		return SFS_ENOTAFILE;
+		return ENOTAFILE;
 
 	if (fs_iserror(n = sfs_inodeget(dev, n, buf, sz)))
 		return fs_uint2interr(n);
@@ -974,33 +976,19 @@ int sfs_dirstat(struct device *dev, const char *path,
 	return 0;
 }
 
-const char *sfs_strfiletype(enum FS_INODETYPE type)
+int sfs_inodestat(struct device *dev, fsaddr_t n,
+	struct fs_dirstat *st)
 {
-	char *FS_FILETYPE[] = {
-		"empty", "file", "device", "directory"
-	};
+	struct sfs_superblock sb;
+	struct sfs_inode in;
 
-	return FS_FILETYPE[type];
-}
+	sfs_readsuperblock(dev, &sb);
+	sfs_readinode(dev, &in, n, &sb);
 
-const char *sfs_strerror(enum SFS_ERROR e)
-{
-	char *strerror[] = {
-		"success",
-		"run out of data blocks",
-		"wrong address",
-		"bad data block",
-		"wrong size",
-		"path is too long",
-		"inode not found",
-		"path not found",
-		"not a directory",
-		"not a regular file",
-		"directory is not empty",
-		"directory already exists"
-	};
+	st->size = in.size;
+	st->type = in.type;
 
-	return strerror[-e];
+	return 0;
 }
 
 int sfs_getfs(struct filesystem *fs)
@@ -1013,6 +1001,7 @@ int sfs_getfs(struct filesystem *fs)
 	fs->inodedelete = sfs_inodedelete;
 	fs->inodeset = sfs_inodeset;
 	fs->inodeget = sfs_inodeget;
+	fs->inodestat = sfs_inodestat;
 	fs->dirsearch = sfs_dirsearch;
 	fs->diradd = sfs_diradd;
 	fs->dirdeleteinode = sfs_dirdeleteinode;
@@ -1023,8 +1012,7 @@ int sfs_getfs(struct filesystem *fs)
 	fs->fileread = sfs_fileread;
 	fs->dirstat = sfs_dirstat;
 	fs->dirgetinode = sfs_dirgetinode;
-	fs->strfiletype = sfs_strfiletype;
-	fs->strerror = sfs_strerror;
+	fs->rootinode = SFS_ROOTINODE;
 
 	return 0;
 }

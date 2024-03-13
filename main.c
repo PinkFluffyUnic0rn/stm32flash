@@ -4,11 +4,11 @@
 
 #include "main.h"
 #include "driver.h"
+#include "vfs.h"
 #include "filesystem.h"
 #include "sfs.h"
 #include "w25.h"
 #include "uartterm.h"
-
 
 #define PRESCALER 72
 #define TIMPERIOD 0xffff
@@ -113,6 +113,17 @@ int printhelp()
 		"device [dev]",
 		"set current device to [dev]");
 
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"mount [dev] [target]",
+		"mount [dev] to [target]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"umount [dev] [target]",
+		"unmount [target]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"mountlist",
+		"get list of mounted devices");
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) s, strlen(s), 100);
 
@@ -224,7 +235,7 @@ int createdir(const char **toks)
 	char buf[1024];
 
 	sprintf(buf, "creating directory: %s\n\r",
-		fs[0].strerror(fs[0].dircreate(curdev, toks[1])));
+		vfs_strerror(fs[0].dircreate(curdev, toks[1])));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -236,19 +247,19 @@ int deletedir(const char **toks)
 	char buf[1024];
 
 	sprintf(buf, "deleting directory: %s\n\r",
-		fs[0].strerror(fs[0].dirdelete(curdev, toks[1])));
+		vfs_strerror(fs[0].dirdelete(curdev, toks[1])));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
 	return 0;
 }
 
-int writefile(const char **toks)
+int setfile(const char **toks)
 {
 	char buf[1024];
 
 	sprintf(buf, "writing file: %s\n\r",
-		fs[0].strerror(fs[0].filewrite(curdev, toks[1],
+		vfs_strerror(fs[0].filewrite(curdev, toks[1],
 			(const uint8_t *) toks[2],
 			strlen(toks[2]) + 1)));
 
@@ -257,15 +268,15 @@ int writefile(const char **toks)
 	return 0;
 }
 
-int readfile(const char **toks)
+int getfile(const char **toks)
 {
 	uint8_t buf[1024];
 	char b[4096];
-	enum SFS_ERROR r;
+	enum ERROR r;
 
 	r = fs[0].fileread(curdev, toks[1], buf, 1024);
 
-	sprintf(b, "got data (%s): |%s|\n\r", fs[0].strerror(r),
+	sprintf(b, "got data (%s): |%s|\n\r", vfs_strerror(r),
 		(char *) buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
@@ -277,13 +288,13 @@ int listdir(const char **toks)
 {
 	char buf[512];
 	char b[1024];
-	enum SFS_ERROR r;
+	enum ERROR r;
 
 	buf[0] = '\0';
 	r = fs[0].dirlist(curdev, toks[1], buf, 512);
 
 	sprintf(b, "directory list (%s):\n\r%s",
-		fs[0].strerror(r), (r == SFS_ESUCCESS ? buf : ""));
+		vfs_strerror(r), (r == ESUCCESS ? buf : ""));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -328,13 +339,13 @@ int statdir(const char **toks)
 {
 	struct fs_dirstat stat;
 	char buf[1024];
-	enum SFS_ERROR r;
+	enum ERROR r;
 
 	r = fs[0].dirstat(curdev, toks[1], &stat);
 
 	sprintf(buf, "result: %s\n\rsize: %ld\n\rtype: %s\n\r",
-		fs[0].strerror(r),
-		stat.size, fs[0].strfiletype(stat.type));
+		vfs_strerror(r), stat.size,
+		fs_strfiletype(stat.type));
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
 
@@ -372,6 +383,121 @@ int setdevice(const char **toks)
 	return 0;
 }
 
+
+int mounthandler(const char **toks)
+{
+	char b[4096];
+
+	struct device *d;
+
+	if (strcmp(toks[1], "dev1") == 0)
+		d = dev + 0;
+	else if (strcmp(toks[1], "dev2") == 0)
+		d = dev + 1;
+	else
+		return 0;
+
+	sprintf(b, "mount: %s\n\r",
+		vfs_strerror(mount(d, toks[2], fs + 0)));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int umounthandler(const char **toks)
+{
+	char b[4096];
+
+	sprintf(b, "umount: %s\n\r", vfs_strerror(umount(toks[1])));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int mountlisthandler(const char **toks)
+{
+	char b[4096];
+	char buf[2048];
+	char *list[MOUNTMAX];
+	char **p;
+
+	sprintf(b, "mount list: %s\n\r", vfs_strerror(mountlist(
+		(const char **) list, buf, 2048)));
+
+	for (p = list; *p != NULL; ++p)
+		sprintf(b + strlen(b), "%s\n\r", *p);
+		
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int openfile(const char **toks)
+{
+	char b[4096];
+	int fd;
+
+	fd = open(toks[1], 0);
+
+	if (fd < 0)
+		sprintf(b, "open: %s\n\r", vfs_strerror(fd));
+	else
+		sprintf(b, "open: %d\n\r", fd);
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int readfile(const char **toks)
+{
+	uint8_t buf[1024];
+	char b[4096];
+	int fd;
+	
+	sscanf(toks[1], "%d", &fd);
+
+	sprintf(b, "reading %d: %s\n\r", fd,
+		vfs_strerror(read(fd, buf, 1024)));
+
+	sprintf(b + strlen(b), "got data: |%s|\n\r", (char *) buf);
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int writefile(const char **toks)
+{
+	char b[4096];
+	int fd;
+	
+	sscanf(toks[1], "%d", &fd);
+
+	sprintf(b, "write %d: %s\n\r", fd,
+		vfs_strerror(write(fd, toks[2], strlen(toks[2]) + 1)));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int closefile(const char **toks)
+{
+	char b[4096];
+	int fd;
+
+	sscanf(toks[1], "%d", &fd);
+
+	sprintf(b, "closing %d: %s\n\r", fd, vfs_strerror(close(fd)));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
 int main(void)
 {
 	HAL_Init();
@@ -404,12 +530,19 @@ int main(void)
 	ut_addcommand("device",		setdevice);
 	ut_addcommand("create",		createdir);
 	ut_addcommand("delete",		deletedir);
-	ut_addcommand("write",		writefile);
-	ut_addcommand("read",		readfile);
+	ut_addcommand("set",		setfile);
+	ut_addcommand("get",		getfile);
 	ut_addcommand("list",		listdir);
 	ut_addcommand("stat",		statdir);
 	ut_addcommand("path",		splitpath);
-	ut_addcommand("getinode",	dirgetinode);
+	ut_addcommand("getinode",	dirgetinode);	
+	ut_addcommand("mount",		mounthandler);
+	ut_addcommand("umount",		umounthandler);
+	ut_addcommand("mountlist",	mountlisthandler);
+	ut_addcommand("open",		openfile);
+	ut_addcommand("read",		readfile);
+	ut_addcommand("write",		writefile);
+	ut_addcommand("close",		closefile);
 
 	printhelp();
 
