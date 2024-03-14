@@ -45,18 +45,6 @@ struct filesystem {
 	int (*inodestat)(struct device *dev, size_t n,
 		struct fs_dirstat *st);
 
-	int (*dircreate)(struct device *dev, const char *path);
-	int (*dirlist)(struct device *dev, const char *path,
-		char *lbuf, size_t sz);
-	int (*dirdelete)(struct device *dev, const char *path);
-	int (*filewrite)(struct device *dev, const char *path,
-		const void *data, size_t sz);
-	int (*fileread)(struct device *dev, const char *path,
-		void *data, size_t sz);
-	int (*dirstat)(struct device *dev, const char *path,
-		struct fs_dirstat *st);
-	size_t (*dirgetinode)(struct device *dev, const char **path);
-
 	size_t rootinode;
 };
 

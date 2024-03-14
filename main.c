@@ -51,6 +51,10 @@ int printhelp()
 	sprintf(s, "\r\ncommands:\n\r");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"device [dev]",
+		"set current device to [dev]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"r [addr]", "read data at address [addr]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
@@ -72,34 +76,6 @@ int printhelp()
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"g [addr]",
 		"get data from inode with address [addr]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"device [dev]",
-		"set current device to [dev]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"create [path]",
-		"create directory [path]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"delete [path]",
-		"delete directory [path]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"set [path] [data]",
-		"set [data] into directory [path], turning it into a file");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"get [path]",
-		"get data from file [path]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"list [path]",
-		"list all subdirectories of directory [path]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"stat [path]",
-		"show all attributes of directory [path]");	
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"mount [dev] [target]",
@@ -143,6 +119,16 @@ int printhelp()
 
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) s, strlen(s), 100);
+
+	return 0;
+}
+
+int setdevice(const char **toks)
+{
+	if (strcmp(toks[1], "dev1") == 0)
+		curdev = dev + 0;
+	else if (strcmp(toks[1], "dev2") == 0)
+		curdev = dev + 1;
 
 	return 0;
 }
@@ -248,105 +234,6 @@ int getinode(const char **toks)
 
 	return 0;
 }
-
-int createdir(const char **toks)
-{
-	char buf[1024];
-
-	sprintf(buf, "creating directory: %s\n\r",
-		vfs_strerror(fs[0].dircreate(curdev, toks[1])));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
-int deletedir(const char **toks)
-{
-	char buf[1024];
-
-	sprintf(buf, "deleting directory: %s\n\r",
-		vfs_strerror(fs[0].dirdelete(curdev, toks[1])));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
-int setfile(const char **toks)
-{
-	char buf[1024];
-
-	sprintf(buf, "writing file: %s\n\r",
-		vfs_strerror(fs[0].filewrite(curdev, toks[1],
-			toks[2],
-			strlen(toks[2]) + 1)));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
-int getfile(const char **toks)
-{
-	uint8_t buf[1024];
-	char b[4096];
-	enum ERROR r;
-
-	r = fs[0].fileread(curdev, toks[1], buf, 1024);
-
-	sprintf(b, "got data (%s): |%s|\n\r", vfs_strerror(r),
-		(char *) buf);
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
-
-	return 0;
-}
-
-int listdir(const char **toks)
-{
-	char buf[512];
-	char b[1024];
-	enum ERROR r;
-
-	buf[0] = '\0';
-	r = fs[0].dirlist(curdev, toks[1], buf, 512);
-
-	sprintf(b, "directory list (%s):\n\r%s",
-		vfs_strerror(r), (r == ESUCCESS ? buf : ""));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
-
-	return 0;
-}
-
-int statdir(const char **toks)
-{
-	struct fs_dirstat stat;
-	char buf[1024];
-	enum ERROR r;
-
-	r = fs[0].dirstat(curdev, toks[1], &stat);
-
-	sprintf(buf, "result: %s\n\rsize: %d\n\rtype: %s\n\r",
-		vfs_strerror(r), stat.size,
-		fs_strfiletype(stat.type));
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) buf, strlen(buf), 100);
-
-	return 0;
-}
-
-int setdevice(const char **toks)
-{
-	if (strcmp(toks[1], "dev1") == 0)
-		curdev = dev + 0;
-	else if (strcmp(toks[1], "dev2") == 0)
-		curdev = dev + 1;
-
-	return 0;
-}
-
 
 int mounthandler(const char **toks)
 {
@@ -524,6 +411,7 @@ int main(void)
 
 	ut_init(&huart1);
 
+	ut_addcommand("device",		setdevice);
 	ut_addcommand("r",		readdata);
 	ut_addcommand("w",		writedata);
 	ut_addcommand("f",		format);
@@ -532,13 +420,6 @@ int main(void)
 	ut_addcommand("s",		setinode);
 	ut_addcommand("g",		getinode);
 
-	ut_addcommand("device",		setdevice);
-	ut_addcommand("create",		createdir);
-	ut_addcommand("delete",		deletedir);
-	ut_addcommand("set",		setfile);
-	ut_addcommand("get",		getfile);
-	ut_addcommand("list",		listdir);
-	ut_addcommand("stat",		statdir);
 	ut_addcommand("mount",		mounthandler);
 	ut_addcommand("umount",		umounthandler);
 	ut_addcommand("mountlist",	mountlisthandler);
