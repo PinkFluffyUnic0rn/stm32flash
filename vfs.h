@@ -12,6 +12,10 @@
 #define MOUNTMAX 8
 #define FDMAX 4
 #define ERRORMAX 0xff
+#define DIRRECORDSIZE 32
+#define DIRMAX 4096
+
+#define O_CREAT 0x1
 
 enum ERROR {
 	ESUCCESS	= 0x00,
@@ -31,7 +35,8 @@ enum ERROR {
 	EMOUNTSISFULL	= -0x0e,
 	ENOROOT		= -0x0f,
 	ERUNOUTOFFD	= -0x10,
-	EFDNOTSET	= -0x11
+	EFDNOTSET	= -0x11,
+	EISMOUNTPOINT	= -0x12
 };
 
 int mount(struct device *dev, const char *target,
@@ -44,6 +49,9 @@ int write(int fd, const void *buf, size_t count);
 int read(int fd, void *buf, size_t count);
 int ioctl(int fd, int req, ...);
 int lseek(int fd, size_t offset);
+int unlink(const char *path);
+int mkdir(const char *path);
+int lsdir(const char *path, const char **list, char *buf, size_t bufsz);
 const char *vfs_strerror(enum ERROR e);
 
 #endif

@@ -70,12 +70,12 @@ int printhelp()
 		"set data for inode with address [addr] to [data]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"h [addr] [size]",
-		"calculate checksum for data at [addr] of [size]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"g [addr]",
 		"get data from inode with address [addr]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"device [dev]",
+		"set current device to [dev]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"create [path]",
@@ -102,18 +102,6 @@ int printhelp()
 		"show all attributes of directory [path]");	
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"path [path]",
-		"split [path] into tokens");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"getinode [path]",
-		"get inode address for directory [path]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"device [dev]",
-		"set current device to [dev]");
-
-	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"mount [dev] [target]",
 		"mount [dev] to [target]");
 
@@ -124,6 +112,35 @@ int printhelp()
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"mountlist",
 		"get list of mounted devices");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"open [path] [flags]",
+		"open file with [path], if [flags] is 'c', create it");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"read [fd]",
+		"read opened file with descriptor [fd]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"write [fd] [data]",
+		"write [data] into opened file with descriptor [fd]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"close [fd]",
+		"close opened file with descriptor [fd]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"mkdir [path]",
+		"create directory [path]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"unlink [path]",
+		"delete file or directory [path]");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"ls [path]",
+		"get list of file in directory [path]");
+
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) s, strlen(s), 100);
 
@@ -164,6 +181,8 @@ int format(const char **toks)
 {
 	fs[0].format(curdev);
 
+	mkdir("/");
+	
 	return 0;
 }
 
@@ -384,7 +403,7 @@ int openfile(const char **toks)
 	char b[4096];
 	int fd;
 
-	fd = open(toks[1], 0);
+	fd = open(toks[1], (strcmp(toks[2], "c") == 0) ? O_CREAT : 0);
 
 	if (fd < 0)
 		sprintf(b, "open: %s\n\r", vfs_strerror(fd));
@@ -404,6 +423,7 @@ int readfile(const char **toks)
 	
 	sscanf(toks[1], "%d", &fd);
 
+	buf[0] = '\0';
 	sprintf(b, "reading %d: %s\n\r", fd,
 		vfs_strerror(read(fd, buf, 1024)));
 
@@ -437,6 +457,47 @@ int closefile(const char **toks)
 	sscanf(toks[1], "%d", &fd);
 
 	sprintf(b, "closing %d: %s\n\r", fd, vfs_strerror(close(fd)));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int makedir(const char **toks)
+{
+	char b[256];
+
+	sprintf(b, "mkdir: %s\n\r", vfs_strerror(mkdir(toks[1])));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int unlinkfile(const char **toks)
+{
+	char b[4096];
+
+	sprintf(b, "unlink: %s\n\r", vfs_strerror(unlink(toks[1])));
+
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int listvfsdir(const char **toks)
+{
+	char b[512];
+	char buf[256];
+	char *list[16];
+	char **p;
+
+	sprintf(b, "ls: %s\n\r", vfs_strerror(lsdir(toks[1],
+		(const char **) list, buf, 256)));
+
+	for (p = list; *p != NULL; ++p)
+		sprintf(b + strlen(b), "%s\n\r", *p);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -485,8 +546,13 @@ int main(void)
 	ut_addcommand("read",		readfile);
 	ut_addcommand("write",		writefile);
 	ut_addcommand("close",		closefile);
+	ut_addcommand("mkdir",		makedir);
+	ut_addcommand("unlink",		unlinkfile);
+	ut_addcommand("ls",		listvfsdir);
 
 	printhelp();
+
+	mount(curdev, "/", fs + 0);
 
 	ut_promptcommand();
 

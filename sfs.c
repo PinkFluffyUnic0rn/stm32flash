@@ -21,6 +21,7 @@
 #define SFS_DIRRECORDSIZE 32
 #define SFS_ROOTINODE 0x0001000
 #define SFS_DATABLOCKSSTART (4096 * 16)
+#define SFS_INITBLOCKSIZE 1024
 
 #define sfs_blockgetmeta(b) (((struct sfs_blockmeta *) (b)))
 #define sfs_checksumembed(buf, size) \
@@ -273,6 +274,9 @@ static size_t sfs_createdatablock(struct device *dev,
 	size_t block, cursector, nextsector, restsz;
 	struct sfs_blockmeta meta;
 
+	if (sz == 0)
+		sz = SFS_INITBLOCKSIZE;
+
 	block = sb->freeblocks;
 
 	restsz = sz + sz / SFS_SECTORSIZE * sizeof(meta);
@@ -460,7 +464,7 @@ size_t sfs_format(struct device *dev)
 		}
 	}
 
-	return sfs_dircreate(dev, "/");
+	return 0;//sfs_dircreate(dev, "/");
 }
 
 size_t sfs_inodecreate(struct device *dev, size_t sz,
@@ -756,7 +760,7 @@ size_t sfs_dirdeleteinode(struct device *dev, size_t parn, size_t n)
 	return 0;
 }
 
-static int sfs_dirisempty(struct device *dev, size_t n)
+size_t sfs_dirisempty(struct device *dev, size_t n)
 {
 	char buf[SFS_DIRSIZE];
 	struct sfs_superblock sb;
@@ -769,13 +773,12 @@ static int sfs_dirisempty(struct device *dev, size_t n)
 	if (in.type != FS_DIR)
 		return 0;
 
-	r = sfs_inodeget(dev, n, buf, SFS_DIRSIZE);
-	if (fs_iserror(r))	
-		return fs_uint2interr(r);
+	if (fs_iserror(r = sfs_inodeget(dev, n, buf, SFS_DIRSIZE)))
+		return r;
 
 	memmove(&nn, buf, sizeof(fssize_t));
 
-	return ((nn != 0xffffffff) ? EDIRNOTEMPTY : 0);
+	return ((nn != 0xffffffff) ? FS_EDIRNOTEMPTY : 0);
 }
 
 static int _sfs_dirlist(struct device *dev, size_t n,
@@ -850,8 +853,8 @@ int sfs_dirdelete(struct device *dev, const char *path)
 	if (fs_iserror(n = sfs_dirgetinode(dev, toks)))
 		return fs_uint2interr(n);
 
-	if ((r = sfs_dirisempty(dev, n)) < 0)
-		return r;
+	if (fs_iserror(r = sfs_dirisempty(dev, n)))
+		return fs_uint2interr(r);
 
 	toks[tokc - 1] = NULL;
 
@@ -997,9 +1000,7 @@ int sfs_getfs(struct filesystem *fs)
 	fs->inodeset = sfs_inodeset;
 	fs->inodeget = sfs_inodeget;
 	fs->inodestat = sfs_inodestat;
-	fs->dirsearch = sfs_dirsearch;
-	fs->diradd = sfs_diradd;
-	fs->dirdeleteinode = sfs_dirdeleteinode;
+	
 	fs->dircreate = sfs_dircreate;
 	fs->dirlist = sfs_dirlist;
 	fs->dirdelete = sfs_dirdelete;
