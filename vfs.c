@@ -24,8 +24,8 @@ struct file {
 };
 
 struct lookupres {
-	const char *name;
-	struct inode inode;
+	const char	*name;
+	struct inode 	inode;
 };
 
 struct file files[FDMAX];
@@ -260,6 +260,13 @@ static size_t diradd(struct inode *in, const char *name, size_t n)
 	if (fs_iserror(r = fs->inodeget(dev, parn, buf, DIRMAX)))
 		return r;
 
+	if ((r = dirsearch(buf, name)) != FS_ENAMENOTFOUND) {
+		if (fs_iserror(r))
+			return r;
+
+		return FS_EALREADYEXISTS;
+	}
+
 	offset = dirfindinode(buf, 0xffffffff);
 
 	memmove(buf + offset, &n, sizeof(uint32_t));
@@ -479,13 +486,29 @@ int cd(const char *path)
 {
 	const char *toks[PATHMAXTOK];
 	char pathbuf[PATHMAX];
+	struct lookupres lr;
+	const struct filesystem *fs;
+	struct device *dev;
+	struct fs_dirstat st;
 	const char **p;
 	int r;
+	size_t n;
 
 	strcpy(pathbuf, path);
 
 	if ((r = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
 		return r;
+
+	if ((r = dirlookup(toks, &lr, 0)) < 0)
+		return r;
+
+	dev = lr.inode.mount->dev;
+	fs = lr.inode.mount->fs;
+	n = lr.inode.addr;
+
+	fs->inodestat(dev, n, &st);
+	if (st.type != FS_DIR)
+		return ENOTADIR;
 
 	strcpy(pwd, "/");
 	for (p = toks; *p != NULL; ++p) {
