@@ -1,6 +1,7 @@
 #include "stm32f1xx_hal.h"
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "w25.h"
 
@@ -223,6 +224,8 @@ int w25_writesector(void *d, size_t addr, const void *data,
 int initdevice(void *is, struct device *dev)
 {
 	memmove(devs + devcount, is, sizeof(struct w25_device));
+	
+	sprintf(dev->name, "%s%d", "flash", devcount);
 
 	dev->priv = devs + devcount;
 

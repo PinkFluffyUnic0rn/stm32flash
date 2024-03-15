@@ -347,18 +347,17 @@ static size_t sfs_inoderesize(struct device *dev, size_t n, size_t sz)
 	sfs_readsuperblock(dev, &sb);
 	sfs_readinode(dev, &in, n, &sb);
 
-	if (sz <= in.size)
-		return 0;
+	if (sz >= in.size) {
+		r = sfs_deletedatablock(dev, in.blocks, &sb);
+		if (fs_iserror(r))
+			return r;
+
+		in.blocks = sfs_createdatablock(dev, &sb, sz);
+		if (fs_iserror(in.blocks))
+			return in.blocks;
+	}
 
 	in.size = sz;
-
-	r = sfs_deletedatablock(dev, in.blocks, &sb);
-	if (fs_iserror(r))
-		return r;
-
-	in.blocks = sfs_createdatablock(dev, &sb, sz);
-	if (fs_iserror(in.blocks))
-		return in.blocks;
 
 	sfs_writeinode(dev, &in, n, &sb);
 	sfs_writesuperblock(dev, &sb);
@@ -593,7 +592,25 @@ size_t sfs_inodeget(struct device *dev, size_t n, void *data, size_t sz)
 	return in.size;
 }
 
-int sfs_inodestat(struct device *dev, size_t n, struct fs_dirstat *st)
+size_t sfs_inodesettype(struct device *dev, size_t n,
+	enum FS_INODETYPE type)
+{
+	struct sfs_superblock sb;
+	struct sfs_inode in;
+
+	sfs_readsuperblock(dev, &sb);
+	sfs_readinode(dev, &in, n, &sb);
+
+	in.type = type;
+
+	sfs_writeinode(dev, &in, n, &sb);
+	sfs_writesuperblock(dev, &sb);
+
+	return 0;
+}
+
+size_t sfs_inodestat(struct device *dev, size_t n,
+	struct fs_dirstat *st)
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
@@ -616,6 +633,7 @@ int sfs_getfs(struct filesystem *fs)
 	fs->inodeset = sfs_inodeset;
 	fs->inodeget = sfs_inodeget;
 	fs->inodestat = sfs_inodestat;
+	fs->inodesettype = sfs_inodesettype;
 
 	fs->rootinode = SFS_ROOTINODE;
 

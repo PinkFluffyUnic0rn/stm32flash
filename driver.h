@@ -4,12 +4,15 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define DEVNAMEMAX 32
+
 enum DEVTYPE {
 	DEVTYPE_CHAR	= 0,
 	DEVTYPE_BLOCK	= 1
 };
 
 struct device {
+	char name[DEVNAMEMAX];
 	enum DEVTYPE type;
 	int (*read)(void *dev, size_t addr, void *data, size_t sz);
 	int (*write)(void *dev, size_t addr, const void *data,

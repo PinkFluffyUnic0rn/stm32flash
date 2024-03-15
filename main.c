@@ -125,10 +125,24 @@ int printhelp()
 
 int setdevice(const char **toks)
 {
-	if (strcmp(toks[1], "dev1") == 0)
+	char b[64];
+
+	if (strcmp(toks[1], dev[0].name) == 0)
 		curdev = dev + 0;
-	else if (strcmp(toks[1], "dev2") == 0)
+	else if (strcmp(toks[1], dev[1].name) == 0)
 		curdev = dev + 1;
+	else {
+		sprintf(b, "unknown device %s\n\r", toks[1]);
+		
+		HAL_UART_Transmit(&huart1, (uint8_t *) b,
+			strlen(b), 100);
+	
+		return 0;
+	}
+
+	sprintf(b, "device %s was set\n\r", toks[1]);
+	
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
 	return 0;
 }
@@ -163,12 +177,10 @@ int writedata(const char **toks)
 	return 0;
 }
 
-int format(const char **toks)
+int devformat(const char **toks)
 {
-	fs[0].format(curdev);
+	format(toks[1]);
 
-	mkdir("/");
-	
 	return 0;
 }
 
@@ -363,10 +375,9 @@ int makedir(const char **toks)
 
 int unlinkfile(const char **toks)
 {
-	char b[4096];
+	char b[128];
 
 	sprintf(b, "unlink: %s\n\r", vfs_strerror(unlink(toks[1])));
-
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -414,12 +425,12 @@ int main(void)
 	ut_addcommand("device",		setdevice);
 	ut_addcommand("r",		readdata);
 	ut_addcommand("w",		writedata);
-	ut_addcommand("f",		format);
 	ut_addcommand("c",		createinode);
 	ut_addcommand("d",		deleteinode);
 	ut_addcommand("s",		setinode);
 	ut_addcommand("g",		getinode);
 
+	ut_addcommand("format",		devformat);
 	ut_addcommand("mount",		mounthandler);
 	ut_addcommand("umount",		umounthandler);
 	ut_addcommand("mountlist",	mountlisthandler);
@@ -433,7 +444,8 @@ int main(void)
 
 	printhelp();
 
-	mount(curdev, "/", fs + 0);
+	mount(dev + 0, "/", fs + 0);
+	mount(dev + 1, "/dev", fs + 0);
 
 	ut_promptcommand();
 

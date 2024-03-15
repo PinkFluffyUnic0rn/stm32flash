@@ -39,6 +39,7 @@ enum ERROR {
 	EISMOUNTPOINT	= -0x12
 };
 
+int format(const char *target);
 int mount(struct device *dev, const char *target,
 	const struct filesystem *fs);
 int umount(const char *target);

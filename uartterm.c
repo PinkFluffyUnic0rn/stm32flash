@@ -129,12 +129,18 @@ int ut_addcommand(const char *name, int (*func)(const char **))
 
 int ut_executecommand()
 {
+	char s[256];
 	int i;
 
 	for (i = 0; i < Commcount; ++i) {
-		if (strcmp(Toks[0], Commtable[i].name) == 0)
+		if (strcmp(Toks[0], Commtable[i].name) == 0) {
 			Commtable[i].func((const char **) Toks);
+			return 0;
+		}
 	}
+
+	sprintf(s, "unknown command\n\r");
+	HAL_UART_Transmit(huart, (uint8_t *) s, strlen(s), 100);
 
 	return 0;
 }

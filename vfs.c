@@ -186,10 +186,14 @@ int mountlist(const char **list, char *buf, size_t bufsz)
 			
 			list[c++] = bufp;
 
-			bufp[0] = '\0';
+			sprintf(bufp, "%-12s ", mounts[i].dev->name);
+
 			for (p = mounts[i].mountpoint; *p != NULL; ++p)
 				sprintf(bufp + strlen(bufp), "/%s", *p);
-		
+	
+			if (*(mounts[i].mountpoint) == NULL)
+				strcat(bufp, "/");
+
 			bufp += strlen(bufp) + 1;
 		}
 
@@ -233,12 +237,11 @@ static size_t dirlookup(const char **toks, struct lookupres *lr,
 	const char *curpath[PATHMAXTOK];
 	char dirbuf[DIRMAX];
 	int mountid, curmountid, c;
-	size_t n, rr;
+	size_t parn, rr;
 	const char **p;
 
 	c = 0;
 	curpath[c] = NULL;
-	n = 0;
 	
 	curmountid = findmountpoint((const char **) curpath);
 	if (curmountid < 0) {
@@ -248,47 +251,47 @@ static size_t dirlookup(const char **toks, struct lookupres *lr,
 		return curmountid;
 	}
 	
-	n = mounts[curmountid].fs->rootinode;
+	parn = mounts[curmountid].fs->rootinode;
 
 	for (p = toks; *p != NULL; ++p) {
 		struct fs_dirstat st;
 		const struct filesystem *fs;
 		struct device *dev;
 
+		curpath[c++] = *p;
+		curpath[c] = NULL;
+
 		mountid = findmountpoint((const char **) curpath);
 		if (mountid >= 0) {
 			curmountid = mountid;
-			n = mounts[curmountid].fs->rootinode;
+			parn = mounts[curmountid].fs->rootinode;
+			continue;
 		} else if (mountid != EMOUNTNOTFOUND)
 			return mountid;
 
 		fs = mounts[curmountid].fs;
 		dev = mounts[curmountid].dev;
 
-		fs->inodestat(dev, n, &st);
+		fs->inodestat(dev, parn, &st);
 
 		if (st.type != FS_DIR)
 			return ENOTADIR;
 
-		rr = fs->inodeget(dev, n, dirbuf, DIRMAX);
+		rr = fs->inodeget(dev, parn, dirbuf, DIRMAX);
 		if (fs_iserror(rr))
 			return fs_uint2interr(rr);
 
-		n = dirsearch(dirbuf, *p);
-		if (fs_iserror(n)) {
+		if (fs_iserror(parn = dirsearch(dirbuf, *p))) {
 			if (flags & O_CREAT && *(p + 1) == NULL)
 				return 1;
 				
 			return ENAMENOTFOUND;
 		}
-
-		curpath[c++] = *p;
-		curpath[c] = NULL;
 	}
 
 	lr->name = (*p == NULL) ? "/" : *(p - 1);
 	lr->inode.mount = mounts + curmountid;
-	lr->inode.addr = n;
+	lr->inode.addr = parn;
 
 	return 0;
 }
@@ -345,7 +348,7 @@ static size_t diradd(struct inode *in, const char *name, size_t n)
 	return 0;
 }
 
-size_t dirdeleteinode(struct inode *in, size_t n)
+static size_t dirdeleteinode(struct inode *in, size_t n)
 {
 	char buf[DIRMAX];
 	struct fs_dirstat st;
@@ -364,7 +367,7 @@ size_t dirdeleteinode(struct inode *in, size_t n)
 
 	if (fs_iserror(r = fs->inodeget(dev, parn, buf, DIRMAX)))
 		return r;
-
+	
 	last = dirfindinode(buf, 0xffffffff);
 	if (last == 0)
 		return FS_ENAMENOTFOUND;
@@ -397,7 +400,7 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 
 	strcpy(pathbuf, path);
 
-	if ((tokc = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
+	if ((tokc = splitpath(pathbuf, toks, PATHMAXTOK)) <= 0)
 		return tokc;
 
 	name = toks[tokc - 1];
@@ -408,19 +411,6 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 
 	dev = lr.inode.mount->dev;
 	fs = lr.inode.mount->fs;
-
-	if (tokc == 0) {
-		size_t b;
-		
-		n = fs->inodecreate(dev, FS_DIR, FS_DIR);
-		if (fs_iserror(n))
-			return fs_uint2interr(n);
-
-		b = 0xffffffff;
-		fs->inodeset(dev, n, &b, sizeof(uint32_t));
-
-		return 0;
-	}
 
 	n = fs->inodecreate(dev, (type == FS_DIR) ? DIRMAX : 0, type);
 	if (fs_iserror(n))
@@ -434,6 +424,43 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 	}
 
 	return fs_uint2interr(diradd(&(lr.inode), name, n));
+}
+
+static int makeroot(struct device *dev, const struct filesystem *fs)
+{
+	size_t b, n;
+
+	n = fs->inodecreate(dev, FS_DIR, FS_DIR);
+	if (fs_iserror(n))
+		return fs_uint2interr(n);
+
+	b = 0xffffffff;
+	fs->inodeset(dev, n, &b, sizeof(uint32_t));
+
+	return 0;
+}
+
+int format(const char *target)
+{
+	int mountid;
+	struct vfsmount *mnt;
+	const char *toks[PATHMAXTOK];
+	char pathbuf[PATHMAX];
+	int r;
+
+	strcpy(pathbuf, target);
+
+	if ((r = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
+		return r;
+
+	if ((mountid = findmountpoint(toks)) < 0)
+		return mountid;
+	
+	mnt = mounts + mountid;
+
+	mnt->fs->format(mnt->dev);
+
+	return makeroot(mnt->dev, mnt->fs);
 }
 
 int open(const char *path, int flags)
@@ -484,16 +511,19 @@ int close(int fd)
 int write(int fd, const void *buf, size_t count)
 {
 	struct vfsmount *mnt;
-	size_t r;
+	size_t n, r;
 
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
 
 	mnt = files[fd].inode.mount;
 
-	r = mnt->fs->inodeset(mnt->dev, files[fd].inode.addr,
-		buf, count);
-	if (fs_iserror(r))
+	n = files[fd].inode.addr;
+
+	if (fs_iserror(r = mnt->fs->inodeset(mnt->dev, n, buf, count)))
+		return fs_uint2interr(r);
+
+	if (fs_iserror(r = mnt->fs->inodesettype(mnt->dev, n, FS_FILE)))
 		return fs_uint2interr(r);
 
 	return 0;
@@ -571,17 +601,17 @@ int unlink(const char *path)
 	size_t n, parn, rr;
 	int r, tokc;
 
+	strcpy(pathbuf, path);
+
+	if ((tokc = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
+		return tokc;
+
 	if ((r = findmountpoint(toks)) != EMOUNTNOTFOUND) {
 		if (r >= 0)
 			return EISMOUNTPOINT;
 
 		return r;
 	}
-
-	strcpy(pathbuf, path);
-
-	if ((tokc = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
-		return tokc;
 
 	if ((r = dirlookup(toks, &lr, 0)) < 0)
 		return r;
@@ -594,12 +624,11 @@ int unlink(const char *path)
 		return r;
 
 	toks[tokc - 1] = NULL;
-
 	if ((r = dirlookup(toks, &lr, 0)) < 0)
 		return r;
 
 	parn = lr.inode.addr;
-	
+
 	if (fs_iserror(rr = dirdeleteinode(&(lr.inode), n)))
 		return fs_uint2interr(rr);
 
@@ -653,7 +682,6 @@ int lsdir(const char *path, const char **list, char *buf, size_t bufsz)
 
 		if (nn == 0xffffffff)
 			break;
-
 
 		list[c++] = bufp;
 

@@ -42,7 +42,9 @@ struct filesystem {
 		const void *data, size_t sz);
 	size_t (*inodeget)(struct device *dev, size_t n,
 		void *data, size_t sz);
-	int (*inodestat)(struct device *dev, size_t n,
+	size_t (*inodesettype)(struct device *dev, size_t n,
+		enum FS_INODETYPE type);
+	size_t (*inodestat)(struct device *dev, size_t n,
 		struct fs_dirstat *st);
 
 	size_t rootinode;
