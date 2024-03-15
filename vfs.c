@@ -39,6 +39,7 @@ char pwd[PATHMAX];
 static int splitpath(char *path, const char **toks, size_t sz)
 {
 	int i;
+	char *p;
 
 	if (strlen(path) + strlen(pwd) > PATHMAX)
 		return EPATHTOOBIG;
@@ -50,11 +51,19 @@ static int splitpath(char *path, const char **toks, size_t sz)
 
 	i = 0;
 
-	toks[i++] = strtok(path, "/");
+	p = path;
+	while (i < sz) {
+		toks[i] = strtok(p, "/");
+		p = NULL;
 
-	while (i < sz && (toks[i++] = strtok(NULL, "/")) != NULL);
-
-	--i;
+		if (toks[i] == NULL)			break;
+		else if (strcmp(toks[i], ".") == 0) 	{ }
+		else if (strcmp(toks[i], "..") == 0)	--i;
+		else					++i;
+	
+		if (i < 0)
+			return EWRONGPATH;
+	}
 
 	if (i >= sz)
 		return EPATHTOOLONG;
@@ -361,7 +370,7 @@ int init()
 {
 	mountset = fileset = 0;
 
-	pwd[0] = '\0';
+	strcpy(pwd, "/");
 
 	return 0;
 }
@@ -468,7 +477,21 @@ int format(const char *target)
 
 int cd(const char *path)
 {
-	strcpy(pwd, path);
+	const char *toks[PATHMAXTOK];
+	char pathbuf[PATHMAX];
+	const char **p;
+	int r;
+
+	strcpy(pathbuf, path);
+
+	if ((r = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
+		return r;
+
+	strcpy(pwd, "/");
+	for (p = toks; *p != NULL; ++p) {
+		strcat(pwd, *p);
+		strcat(pwd, "/");
+	}
 
 	return 0;
 }
@@ -728,7 +751,8 @@ const char *vfs_strerror(enum ERROR e)
 		"root is not mounted",
 		"run of of file descriptors",
 		"file descriptor is not set",
-		"directory is a mount point"
+		"directory is a mount point",
+		"invalid path"
 	};
 
 	return strerror[-e];

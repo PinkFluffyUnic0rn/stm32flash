@@ -391,6 +391,8 @@ int listvfsdir(const char **toks)
 	char *list[16];
 	char **p;
 
+	list[0] = NULL;
+
 	sprintf(b, "ls: %s\n\r", vfs_strerror(lsdir(toks[1],
 		(const char **) list, buf, 256)));
 

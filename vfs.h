@@ -36,7 +36,8 @@ enum ERROR {
 	ENOROOT		= -0x0f,
 	ERUNOUTOFFD	= -0x10,
 	EFDNOTSET	= -0x11,
-	EISMOUNTPOINT	= -0x12
+	EISMOUNTPOINT	= -0x12,
+	EWRONGPATH	= -0x13
 };
 
 int format(const char *target);
