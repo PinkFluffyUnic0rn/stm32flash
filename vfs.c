@@ -23,21 +23,30 @@ struct file {
 	struct inode	inode;
 };
 
+struct lookupres {
+	const char *name;
+	struct inode inode;
+};
+
 struct file files[FDMAX];
 int fileset;
 
 struct vfsmount mounts[MOUNTMAX];
 int mountset;
 
-char *pwd[PATHMAXTOK];
-char *root[PATHMAXTOK];
+char pwd[PATHMAX];
 
 static int splitpath(char *path, const char **toks, size_t sz)
 {
 	int i;
 
-	if (strlen(path) > PATHMAX)
+	if (strlen(path) + strlen(pwd) > PATHMAX)
 		return EPATHTOOBIG;
+
+	if (path[0] != '/') {
+		memmove(path + strlen(pwd), path, strlen(path) + 1);
+		memmove(path, pwd, strlen(pwd));
+	}
 
 	i = 0;
 
@@ -113,98 +122,6 @@ static int findmountpoint(const char **toks)
 	}
 
 	return EMOUNTNOTFOUND;
-};
-
-int init()
-{
-	mountset = fileset = 0;
-
-	root[0] = "";
-	pwd[0] = "";
-
-	return 0;
-}
-
-int mount(struct device *dev, const char *target,
-	const struct filesystem *fs)
-{
-	const char *toks[PATHMAXTOK];
-	int mountid;
-	int r;
-
-	if ((mountid = allocinset(&mountset)) < 0)
-		return EMOUNTSISFULL;
-
-	strcpy(mounts[mountid].mountpointbuf, target);
-
-	if ((r = splitpath(mounts[mountid].mountpointbuf,
-			toks, PATHMAXTOK)) < 0) {
-		freefromset(&mountset, mountid);
-		return r;
-	}
-
-	mounts[mountid].dev = dev;
-	mounts[mountid].fs = fs;
-
-	memmove(mounts[mountid].mountpoint, toks,
-		sizeof(char *) * PATHMAXTOK);
-
-	return 0;
-}
-
-int umount(const char *target)
-{
-	int mountid;
-	const char *toks[PATHMAXTOK];
-	char pathbuf[PATHMAX];
-	int r;
-
-	strcpy(pathbuf, target);
-
-	if ((r = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
-		return r;
-
-	if ((mountid = findmountpoint(toks)) < 0)
-		return mountid;
-
-	freefromset(&mountset, mountid);
-
-	return 0;
-}
-
-int mountlist(const char **list, char *buf, size_t bufsz)
-{
-	size_t c;
-	char *bufp;
-	int i;
-
-	c = 0;
-	bufp = buf;
-	for (i = 0; i < sizeof(int) * 8; ++i)
-		if (isinset(mountset, i)) {
-			const char **p;
-			
-			list[c++] = bufp;
-
-			sprintf(bufp, "%-12s ", mounts[i].dev->name);
-
-			for (p = mounts[i].mountpoint; *p != NULL; ++p)
-				sprintf(bufp + strlen(bufp), "/%s", *p);
-	
-			if (*(mounts[i].mountpoint) == NULL)
-				strcat(bufp, "/");
-
-			bufp += strlen(bufp) + 1;
-		}
-
-	list[c] = NULL;
-
-	return 0;
-}
-
-struct lookupres {
-	const char *name;
-	struct inode inode;
 };
 
 static size_t dirsearch(void *buf, const char *name)
@@ -440,6 +357,92 @@ static int makeroot(struct device *dev, const struct filesystem *fs)
 	return 0;
 }
 
+int init()
+{
+	mountset = fileset = 0;
+
+	pwd[0] = '\0';
+
+	return 0;
+}
+
+int mount(struct device *dev, const char *target,
+	const struct filesystem *fs)
+{
+	const char *toks[PATHMAXTOK];
+	int mountid;
+	int r;
+
+	if ((mountid = allocinset(&mountset)) < 0)
+		return EMOUNTSISFULL;
+
+	strcpy(mounts[mountid].mountpointbuf, target);
+
+	if ((r = splitpath(mounts[mountid].mountpointbuf,
+			toks, PATHMAXTOK)) < 0) {
+		freefromset(&mountset, mountid);
+		return r;
+	}
+
+	mounts[mountid].dev = dev;
+	mounts[mountid].fs = fs;
+
+	memmove(mounts[mountid].mountpoint, toks,
+		sizeof(char *) * PATHMAXTOK);
+
+	return 0;
+}
+
+int umount(const char *target)
+{
+	int mountid;
+	const char *toks[PATHMAXTOK];
+	char pathbuf[PATHMAX];
+	int r;
+
+	strcpy(pathbuf, target);
+
+	if ((r = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
+		return r;
+
+	if ((mountid = findmountpoint(toks)) < 0)
+		return mountid;
+
+	freefromset(&mountset, mountid);
+
+	return 0;
+}
+
+int mountlist(const char **list, char *buf, size_t bufsz)
+{
+	size_t c;
+	char *bufp;
+	int i;
+
+	c = 0;
+	bufp = buf;
+	for (i = 0; i < sizeof(int) * 8; ++i)
+		if (isinset(mountset, i)) {
+			const char **p;
+			
+			list[c++] = bufp;
+
+			sprintf(bufp, "%-12s ", mounts[i].dev->name);
+
+			for (p = mounts[i].mountpoint; *p != NULL; ++p)
+				sprintf(bufp + strlen(bufp), "/%s", *p);
+	
+			if (*(mounts[i].mountpoint) == NULL)
+				strcat(bufp, "/");
+
+			bufp += strlen(bufp) + 1;
+		}
+
+	list[c] = NULL;
+
+	return 0;
+}
+
 int format(const char *target)
 {
 	int mountid;
@@ -461,6 +464,13 @@ int format(const char *target)
 	mnt->fs->format(mnt->dev);
 
 	return makeroot(mnt->dev, mnt->fs);
+}
+
+int cd(const char *path)
+{
+	strcpy(pwd, path);
+
+	return 0;
 }
 
 int open(const char *path, int flags)

@@ -402,6 +402,18 @@ int listvfsdir(const char **toks)
 	return 0;
 }
 
+int vfscd(const char **toks)
+{
+	char b[512];
+
+	sprintf(b, "cd: %s\n\r", vfs_strerror(cd(toks[1])));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+
 int main(void)
 {
 	HAL_Init();
@@ -441,6 +453,7 @@ int main(void)
 	ut_addcommand("mkdir",		makedir);
 	ut_addcommand("unlink",		unlinkfile);
 	ut_addcommand("ls",		listvfsdir);
+	ut_addcommand("cd",		vfscd);
 
 	printhelp();
 

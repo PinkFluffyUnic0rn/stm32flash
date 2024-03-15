@@ -44,6 +44,7 @@ int mount(struct device *dev, const char *target,
 	const struct filesystem *fs);
 int umount(const char *target);
 int mountlist(const char **list, char *buf, size_t bufsz);
+int cd(const char *path);
 int open(const char *path, int flags);
 int close(int fd);
 int write(int fd, const void *buf, size_t count);
