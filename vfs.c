@@ -576,8 +576,11 @@ int write(int fd, const void *buf, size_t count)
 
 	n = files[fd].inode.addr;
 
-	if (fs_iserror(r = mnt->fs->inodeset(mnt->dev, n, buf, count)))
+	if (fs_iserror(r = mnt->fs->inodewrite(mnt->dev, n,
+			files[fd].offset, buf, count)))
 		return fs_uint2interr(r);
+
+	files[fd].offset += count;
 
 	if (fs_iserror(r = mnt->fs->inodesettype(mnt->dev, n, FS_FILE)))
 		return fs_uint2interr(r);
@@ -595,12 +598,14 @@ int read(int fd, void *buf, size_t count)
 
 	mnt = files[fd].inode.mount;
 
-	r = mnt->fs->inodeget(mnt->dev, files[fd].inode.addr,
-		buf, count);
+	r = mnt->fs->inoderead(mnt->dev, files[fd].inode.addr,
+		files[fd].offset, buf, count);
 	if (fs_iserror(r))
 		return fs_uint2interr(r);
 
-	return 0;
+	files[fd].offset += count;
+
+	return r;
 }
 
 int ioctl(int fd, int req, ...)

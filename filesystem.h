@@ -34,6 +34,11 @@ struct fs_dirstat {
 struct filesystem {
 	const char *name;
 
+	size_t (*dumpsuperblock)(struct device *dev, void *sb);
+	size_t (*dumpinode)(struct device *dev, size_t n, void *in);
+	size_t (*dumpblockmeta)(struct device *dev,
+		size_t n, void *meta);
+
 	size_t (*format)(struct device *dev);
 	size_t (*inodecreate)(struct device *dev,
 		size_t sz, enum FS_INODETYPE type);
@@ -42,6 +47,10 @@ struct filesystem {
 		const void *data, size_t sz);
 	size_t (*inodeget)(struct device *dev, size_t n,
 		void *data, size_t sz);
+	size_t (*inoderead)(struct device *dev, size_t n, size_t offset,
+		void *data, size_t sz);
+	size_t (*inodewrite)(struct device *dev, size_t n,
+		size_t offset, const void *data, size_t sz);
 	size_t (*inodesettype)(struct device *dev, size_t n,
 		enum FS_INODETYPE type);
 	size_t (*inodestat)(struct device *dev, size_t n,

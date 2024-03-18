@@ -51,17 +51,24 @@ int printhelp()
 	sprintf(s, "\r\nraw driver commands:\n\r");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"device [dev]",
+		"sd [dev]",
 		"set current device to [dev]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"r [addr]", "read data at address [addr]");
+		"rd [addr]", "read data at address [addr]");
 
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
-		"w [addr] [str]","write string [str] into [addr]");
+		"wd [addr] [str]","write string [str] into [addr]");
 
 	sprintf(s + strlen(s), "\r\nraw filesystem commands:\n\r");
 	
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"f", "format choosen device");
+
+	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
+		"i [struct] {[addr]}",
+		"dump filesystem [struct] (sb, in, bm) at [addr]");
+
 	sprintf(s + strlen(s), "\t%-23s%-32s\n\r",
 		"c [sz]","create inode for data size of [size]");
 
@@ -157,6 +164,13 @@ int setdevice(const char **toks)
 	return 0;
 }
 
+int devformat(const char **toks)
+{
+	fs[0].format(curdev);
+
+	return 0;
+}
+
 int readdata(const char **toks)
 {
 	char b[1024];
@@ -187,7 +201,7 @@ int writedata(const char **toks)
 	return 0;
 }
 
-int devformat(const char **toks)
+int mntdevformat(const char **toks)
 {
 	int r;
 	
@@ -260,12 +274,173 @@ int getinode(const char **toks)
 
 	r = fs[0].inodeget(curdev, addr, buf, 256);
 
+	buf[r] = '\0';
 	sprintf(b, "got data: %x |%s|\n\r", r, buf);
 
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
 	return 0;
 }
+
+int readinode(const char **toks)
+{
+	size_t addr, offset, size;
+	uint8_t buf[256];
+	char b[512];
+	size_t r;
+
+	sscanf(toks[1], "%x", &addr);
+	sscanf(toks[2], "%d", &offset);
+	sscanf(toks[3], "%d", &size);
+
+	memset(buf, 0, 256);
+	r = fs[0].inoderead(curdev, addr, offset, buf, size);
+
+	sprintf(b, "got data: %d |%s|\n\r", r, buf);
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int writeinode(const char **toks)
+{
+	size_t addr, offset;
+	char buf[256];
+	char b[512];
+
+	sscanf(toks[1], "%x", &addr);
+	sscanf(toks[2], "%d", &offset);
+	sscanf(toks[3], "%s", buf);
+
+	sprintf(b, "set data: %d\n\r",
+		fs[0].inodewrite(curdev, addr, offset, buf, strlen(buf)));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int createbiginode(const char **toks)
+{
+	size_t sz, addr, insz, i;
+	char buf[5000];
+	char b[64];
+
+	insz = 5000;
+
+	sscanf(toks[1], "%d", &sz);
+
+	sprintf(b, "new inode address: %x\n\r",
+		(addr = fs[0].inodecreate(curdev, insz, FS_FILE)));
+
+	for (i = 0; i < insz; ++i)
+		buf[i] = (i % ('z' - 'a')) + 'a';
+
+	sprintf(b + strlen(b), "set data: %d\n\r",
+		fs[0].inodeset(curdev, addr, buf, insz));
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int dumpsb()
+{
+	struct sfs_superblock sb;
+	char b[512];
+	int i;
+
+	fs[0].dumpsuperblock(curdev, &sb);
+
+	b[0] = '\0';
+	sprintf(b + strlen(b), "checksum: %lx\r\n", sb.checksum);
+	sprintf(b + strlen(b), "inode count: %lx\r\n", sb.inodecnt);
+	sprintf(b + strlen(b), "inode size: %lu\r\n", sb.inodesz);
+	sprintf(b + strlen(b), "inodes start: %lx\r\n", sb.inodestart);
+	sprintf(b + strlen(b), "free inode: %lx\r\n", sb.freeinodes);
+	sprintf(b + strlen(b), "blocks start: %lx\r\n", sb.blockstart);
+	sprintf(b + strlen(b), "free block: %lx\r\n", sb.freeblocks);
+
+	sprintf(b + strlen(b), "inodes checksums: ");
+	for (i = 0; i < SFS_INODESECTORSCOUNT + 1; ++i) {
+		sprintf(b + strlen(b), "%lx%s", sb.inodechecksum[i],
+			((i != SFS_INODESECTORSCOUNT) ? ", " : ""));
+	}
+	sprintf(b + strlen(b), "\r\n");
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int dumpin(const char *arg)
+{
+	size_t addr;
+	struct sfs_inode in;
+	char b[512];
+
+	sscanf(arg, "%x", &addr);
+
+	fs[0].dumpinode(curdev, addr, &in);
+
+	b[0] = '\0';
+	sprintf(b + strlen(b), "checksum: %lx\r\n", in.checksum);
+	sprintf(b + strlen(b), "next free: %lx\r\n", in.nextfree);
+	sprintf(b + strlen(b), "size: %lu\r\n", in.size);
+	sprintf(b + strlen(b), "allocsize: %lu\r\n", in.allocsize);
+	sprintf(b + strlen(b), "type: %lx\r\n", in.type);
+	sprintf(b + strlen(b), "block[0]: %x\r\n", in.blocks.block[0]);
+	sprintf(b + strlen(b), "block[1]: %x\r\n", in.blocks.block[1]);
+	sprintf(b + strlen(b), "indirect block: %x\r\n",
+		in.blocks.blockindirect);
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int dumpb(const char *arg)
+{
+	size_t addr;
+	struct sfs_blockmeta meta;
+	char b[512];
+
+	sscanf(arg, "%x", &addr);
+
+	fs[0].dumpblockmeta(curdev, addr, &meta);
+
+	b[0] = '\0';
+	sprintf(b + strlen(b), "checksum: %lx\r\n", meta.checksum);
+	sprintf(b + strlen(b), "next: %lx\r\n", meta.next);
+	sprintf(b + strlen(b), "datasize: %lu\r\n", meta.datasize);
+
+	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+
+	return 0;
+}
+
+int dump(const char **toks)
+{
+	if (strcmp(toks[1], "sb") == 0)
+		return dumpsb();
+	if (strcmp(toks[1], "in") == 0)
+		return dumpin(toks[2]);
+	if (strcmp(toks[1], "bm") == 0)
+		return dumpb(toks[2]);
+	else {
+		char b[512];
+
+		sprintf(b, "Unknown structure\n\r");
+
+		HAL_UART_Transmit(&huart1, (uint8_t *) b,
+			strlen(b), 100);
+		return 0;
+	}
+
+	return 0;
+}
+
 
 int mounthandler(const char **toks)
 {
@@ -365,17 +540,20 @@ int readfile(const char **toks)
 {
 	uint8_t buf[256];
 	char b[512];
+	size_t sz;
 	int fd, r;
-	
-	sscanf(toks[1], "%d", &fd);
 
-	if ((r = read(fd, buf, 256)) < 0) {
+	sscanf(toks[1], "%d", &fd);
+	sscanf(toks[2], "%x", &sz);
+
+	if ((r = read(fd, buf, sz)) < 0) {
 		sprintf(b, "error: %s\n\r", vfs_strerror(r));
 		HAL_UART_Transmit(&huart1, (uint8_t *) b,
 			strlen(b), 100);
 		return 0;
 	}
 
+	buf[r] = '\0';
 	sprintf(b, "%s\n\r", (char *) buf);
 	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
 
@@ -388,7 +566,7 @@ int writefile(const char **toks)
 	
 	sscanf(toks[1], "%d", &fd);
 
-	if ((r = write(fd, toks[2], strlen(toks[2]) + 1)) < 0) {
+	if ((r = write(fd, toks[2], strlen(toks[2]))) < 0) {
 		char b[64];
 	
 		sprintf(b, "error: %s\n\r", vfs_strerror(r));
@@ -511,15 +689,22 @@ int main(void)
 
 	ut_init(&huart1);
 
-	ut_addcommand("device",		setdevice);
-	ut_addcommand("r",		readdata);
-	ut_addcommand("w",		writedata);
+	ut_addcommand("sd",		setdevice);
+	ut_addcommand("rd",		readdata);
+	ut_addcommand("wd",		writedata);
+
+	ut_addcommand("f",		devformat);
+	ut_addcommand("i",		dump);
 	ut_addcommand("c",		createinode);
 	ut_addcommand("d",		deleteinode);
 	ut_addcommand("s",		setinode);
 	ut_addcommand("g",		getinode);
+	ut_addcommand("r",		readinode);
+	ut_addcommand("w",		writeinode);
+	ut_addcommand("b",		createbiginode);
 
-	ut_addcommand("format",		devformat);
+
+	ut_addcommand("format",		mntdevformat);
 	ut_addcommand("mount",		mounthandler);
 	ut_addcommand("umount",		umounthandler);
 	ut_addcommand("mountlist",	mountlisthandler);

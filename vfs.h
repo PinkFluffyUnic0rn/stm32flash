@@ -13,7 +13,7 @@
 #define FDMAX 4
 #define ERRORMAX 0xff
 #define DIRRECORDSIZE 32
-#define DIRMAX 4096
+#define DIRMAX (4096 - 64)
 
 #define O_CREAT 0x1
 
