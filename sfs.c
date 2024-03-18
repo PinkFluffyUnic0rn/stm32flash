@@ -6,18 +6,18 @@
 
 #include "sfs.h"
 
-// values from underlying block device
-#define SFS_WRITESIZE 256
-#define SFS_SECTORSIZE 4096
+#define SFS_MAXWRITESIZE 256
+#define SFS_MAXSECTORSIZE 4096
+#define SFS_MAXINODEPERSECTOR (SFS_MAXSECTORSIZE / sizeof(struct sfs_inode))
 
-#define SFS_INODEPERSECTOR (SFS_SECTORSIZE / sizeof(struct sfs_inode))
-#define SFS_INODESSZ (SFS_SECTORSIZE * SFS_INODESECTORSCOUNT)
 #define SFS_RETRYCOUNT 5
 #define SFS_ROOTINODE 0x0001000
-#define SFS_DATABLOCKSSTART (4096 * 16)
 #define SFS_INITBLOCKSIZE 1024
-#define SFS_INDIRECTSIZE (SFS_SECTORSIZE - sizeof(struct sfs_blockmeta))
-#define SFS_DATABLOCKSIZE (SFS_SECTORSIZE - sizeof(struct sfs_blockmeta))
+
+#define sfs_indirectsize(dev) ((dev)->sectorsize - sizeof(struct sfs_blockmeta))
+#define sfs_datablocksize(dev) ((dev)->sectorsize - sizeof(struct sfs_blockmeta))
+#define sfs_inodepersector(dev) ((dev)->sectorsize / sizeof(struct sfs_inode))
+#define sfs_datablocksstart(dev) ((dev)->sectorsize * 16)
 
 #define sfs_blockgetmeta(b) (((struct sfs_blockmeta *) (b)))
 #define sfs_blockgetdata(b) (((void *) ((b) + sizeof(struct sfs_blockmeta))))
@@ -27,6 +27,7 @@
 #define sfs_checkdataembed(dev, addr, size, cs) \
 	sfs_checkdata(dev, (addr) + sizeof(sfs_checksum_t), \
 			(size) - sizeof(sfs_checksum_t), cs)
+
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
@@ -42,8 +43,8 @@ static int sfs_rewritesector(struct device *dev, size_t addr,
 
 	dev->erasesector(dev->priv, addr);
 
-	for (i = 0; i < sz; i += min(SFS_WRITESIZE, sz - i))
-		dev->write(dev->priv, addr + i, data + i, SFS_WRITESIZE);
+	for (i = 0; i < sz; i += min(dev->writesize, sz - i))
+		dev->write(dev->priv, addr + i, data + i, dev->writesize);
 
 	return 0;
 }
@@ -63,15 +64,15 @@ static sfs_checksum_t sfs_checksum(const void *buf, size_t size)
 static int sfs_checkdata(struct device *dev, size_t addr,
 	size_t size, sfs_checksum_t cs)
 {
-	char buf[SFS_WRITESIZE];
+	char buf[SFS_MAXWRITESIZE];
 	size_t i;
 	sfs_checksum_t ccs;
 
 	ccs = 0;
-	for (i = 0; i < size; i += SFS_WRITESIZE) {
+	for (i = 0; i < size; i += dev->writesize) {
 		size_t cursz;
 
-		cursz = min(size - i, SFS_WRITESIZE);
+		cursz = min(size - i, dev->writesize);
 
 		dev->read(dev->priv, addr + i, buf, cursz);
 
@@ -152,29 +153,29 @@ static size_t sfs_writeinode(struct device *dev,
 	const struct sfs_inode *in, size_t n,
 	struct sfs_superblock *sb)
 {
-	struct sfs_inode buf[SFS_INODEPERSECTOR];
+	struct sfs_inode buf[SFS_MAXINODEPERSECTOR];
 	size_t inodesector, inodesectorn, inodeid, sz;
 	int i;
 
 	sz = sizeof(struct sfs_inode);
 
-	inodesector = n / SFS_SECTORSIZE * SFS_SECTORSIZE;
-	inodesectorn = inodesector / SFS_SECTORSIZE;
+	inodesector = n / dev->sectorsize * dev->sectorsize;
+	inodesectorn = inodesector / dev->sectorsize;
 	inodeid	= (n - inodesector) / sz;
 
-	dev->read(dev->priv, inodesector, buf, SFS_SECTORSIZE);
+	dev->read(dev->priv, inodesector, buf, dev->sectorsize);
 
 	memmove(buf + inodeid, in, sz);
 
 	buf[inodeid].checksum = sfs_checksumembed(buf + inodeid, sz);
 
 	sb->inodechecksum[inodesectorn]
-		= sfs_checksum(buf, SFS_SECTORSIZE);
+		= sfs_checksum(buf, dev->sectorsize);
 
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
-		sfs_rewritesector(dev, inodesector, buf, SFS_SECTORSIZE);
+		sfs_rewritesector(dev, inodesector, buf, dev->sectorsize);
 
-		if (sfs_checkdata(dev, inodesector, SFS_SECTORSIZE,
+		if (sfs_checkdata(dev, inodesector, dev->sectorsize,
 			sb->inodechecksum[inodesectorn])) {
 			break;
 		}
@@ -194,7 +195,7 @@ static size_t sfs_readdatablock(struct device *dev,
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
 		sfs_checksum_t cs;
 
-		dev->read(dev->priv, block, data, SFS_SECTORSIZE);
+		dev->read(dev->priv, block, data, dev->sectorsize);
 
 		totalsize = sizeof(struct sfs_blockmeta)
 			+ sfs_blockgetmeta(data)->datasize;
@@ -262,7 +263,7 @@ static size_t sfs_deletedatablock(struct device *dev,
 	size_t cursector, nextsector;
 	struct sfs_blockmeta meta;
 
-	if (al->block[0] % SFS_SECTORSIZE
+	if (al->block[0] % dev->sectorsize
 			|| al->block[0] < sb->blockstart)
 		return FS_EWRONGADDR;
 
@@ -280,7 +281,7 @@ static size_t sfs_deletedatablock(struct device *dev,
 
 	cursector = nextsector = al->block[0];
 	while (nextsector != 0) {
-		char buf[SFS_SECTORSIZE];
+		char buf[SFS_MAXSECTORSIZE];
 
 		cursector = nextsector;
 
@@ -309,8 +310,8 @@ static size_t sfs_inodeextent(struct device *dev,
 	size_t cursector, curendsector, nextsector,
 		cursz, blockcnt, block;
 	size_t *indirectidx;
-	char buf[SFS_SECTORSIZE];
-	char indirectbuf[SFS_SECTORSIZE];
+	char buf[SFS_MAXSECTORSIZE];
+	char indirectbuf[SFS_MAXSECTORSIZE];
 	struct sfs_blockmeta meta;
 	int restsz;
 
@@ -323,7 +324,7 @@ static size_t sfs_inodeextent(struct device *dev,
 
 		sfs_readdatablock(dev, curendsector, buf);
 
-		cursz += SFS_DATABLOCKSIZE;
+		cursz += sfs_datablocksize(dev);
 
 		nextsector = sfs_blockgetmeta(buf)->next;
 		
@@ -331,7 +332,7 @@ static size_t sfs_inodeextent(struct device *dev,
 	}
 
 	// allocate indirect addressing block, if new size requires it
-	if (sz / SFS_INDIRECTSIZE >= 2) {
+	if (sz / sfs_indirectsize(dev) >= 2) {
 		al->blockindirect = sfs_createindirectblock(dev, sb,
 			indirectbuf);
 		if (fs_iserror(al->blockindirect))
@@ -344,12 +345,13 @@ static size_t sfs_inodeextent(struct device *dev,
 	// get new blocks
 	block = sb->freeblocks;
 
-	restsz = (sz - cursz) + (sz - cursz) / SFS_SECTORSIZE * sizeof(meta);
+	restsz = (sz - cursz) + (sz - cursz)
+		/ dev->sectorsize * sizeof(meta);
 	cursector = nextsector = sb->freeblocks;
 	while (restsz > 0 && nextsector != 0) {
 		cursector = nextsector;
 	
-		if (blockcnt >= SFS_INDIRECTSIZE / sizeof(size_t))
+		if (blockcnt >= sfs_indirectsize(dev) / sizeof(size_t))
 			return FS_ENODATABLOCKS;
 
 		if (blockcnt < 2)
@@ -357,8 +359,8 @@ static size_t sfs_inodeextent(struct device *dev,
 		else
 			indirectidx[blockcnt - 2] = cursector;
 
-		restsz = (SFS_SECTORSIZE > restsz)
-			? 0 : restsz - SFS_SECTORSIZE;
+		restsz = (dev->sectorsize > restsz)
+			? 0 : restsz - dev->sectorsize;
 
 		sfs_readdatablock(dev, cursector, buf);
 
@@ -399,8 +401,8 @@ static size_t sfs_inoderesize(struct device *dev, struct sfs_inode *in,
 	if (sz > in->allocsize) {
 		size_t r;
 	
-		in->allocsize = (sz / SFS_DATABLOCKSIZE + 1)
-			* SFS_DATABLOCKSIZE;
+		in->allocsize = (sz / sfs_datablocksize(dev) + 1)
+			* sfs_datablocksize(dev);
 
 		r = sfs_inodeextent(dev, sb, in->allocsize, &(in->blocks));
 
@@ -419,20 +421,20 @@ static int sfs_writeinodeblock(struct device *dev,
 	size_t inodesector;
 	int i;
 
-	inodesector = sb->inodestart + inodesectorn * SFS_SECTORSIZE;
+	inodesector = sb->inodestart + inodesectorn * dev->sectorsize;
 
 	sb->inodechecksum[1 + inodesectorn]
-		= sfs_checksum(buf, SFS_SECTORSIZE);
+		= sfs_checksum(buf, dev->sectorsize);
 
-	dev->writesector(dev->priv, inodesector, buf, SFS_SECTORSIZE);
+	dev->writesector(dev->priv, inodesector, buf, dev->sectorsize);
 
 	for (i = 0; i < SFS_RETRYCOUNT; ++i) {
-		if (sfs_checkdata(dev, inodesector, SFS_SECTORSIZE,
+		if (sfs_checkdata(dev, inodesector, dev->sectorsize,
 			sb->inodechecksum[1 + inodesectorn])) {
 			break;
 		}
 
-		sfs_rewritesector(dev, inodesector, buf, SFS_SECTORSIZE);
+		sfs_rewritesector(dev, inodesector, buf, dev->sectorsize);
 
 		HAL_Delay(Delay[i]);
 	}
@@ -443,26 +445,33 @@ static int sfs_writeinodeblock(struct device *dev,
 size_t sfs_format(struct device *dev)
 {
 	struct sfs_superblock sb;
-	struct sfs_inode buf[SFS_INODEPERSECTOR];
+	struct sfs_inode buf[SFS_MAXINODEPERSECTOR];
 	size_t inodecnt, p, i;
+
+	if (dev->sectorsize > SFS_MAXSECTORSIZE)
+		return ESECTORTOOBIG;
+
+	if (dev->writesize > SFS_MAXWRITESIZE)
+		return EWRITETOOBIG;
 
 	dev->eraseall(dev->priv);
 	
-	sb.inodecnt = SFS_INODESSZ / sizeof(struct sfs_inode);
+	sb.inodecnt = (dev->sectorsize * SFS_INODESECTORSCOUNT)
+		/ sizeof(struct sfs_inode);
 	sb.inodesz = sizeof(struct sfs_inode);
-	sb.inodestart = SFS_SECTORSIZE;
-	sb.blockstart = SFS_DATABLOCKSSTART;
-	sb.freeinodes = SFS_SECTORSIZE;
-	sb.freeblocks = SFS_DATABLOCKSSTART;
+	sb.inodestart = dev->sectorsize;
+	sb.blockstart = sfs_datablocksstart(dev);
+	sb.freeinodes = dev->sectorsize;
+	sb.freeblocks = sfs_datablocksstart(dev);
 
-	inodecnt = SFS_INODEPERSECTOR * SFS_INODESECTORSCOUNT;
+	inodecnt = sfs_inodepersector(dev) * SFS_INODESECTORSCOUNT;
 	for (i = 0; i < inodecnt; ++i) {
 		struct sfs_inode *curin;
 		size_t insz;
 
 		insz = sizeof(struct sfs_inode);
 
-		curin = buf + i % SFS_INODEPERSECTOR;
+		curin = buf + i % sfs_inodepersector(dev);
 
 		curin->nextfree = sb.inodestart + (i + 1) * sb.inodesz;
 		curin->blocks.block[0] = 0;
@@ -472,23 +481,23 @@ size_t sfs_format(struct device *dev)
 
 		curin->checksum = sfs_checksumembed(curin, insz);
 
-		if ((i + 1) % SFS_INODEPERSECTOR == 0) {
+		if ((i + 1) % sfs_inodepersector(dev) == 0) {
 			sfs_writeinodeblock(dev,
-				i / SFS_INODEPERSECTOR, buf, &sb);
+				i / sfs_inodepersector(dev), buf, &sb);
 		}
 	}
 
 	sfs_writesuperblock(dev, &sb);
 
-	for (p = sb.freeblocks; p < dev->totalsize; p += SFS_SECTORSIZE) {
+	for (p = sb.freeblocks; p < dev->totalsize; p += dev->sectorsize) {
 		struct sfs_blockmeta meta;
 		size_t sz;
 		int j;
 
 		sz = sizeof(struct sfs_blockmeta);
 
-		meta.next = (p + SFS_SECTORSIZE >= dev->totalsize)
-			? 0 : p + SFS_SECTORSIZE;
+		meta.next = (p + dev->sectorsize >= dev->totalsize)
+			? 0 : p + dev->sectorsize;
 		meta.datasize = 0;
 
 		meta.checksum = sfs_checksumembed(&meta, sz);
@@ -591,10 +600,10 @@ size_t sfs_inodeset(struct device *dev, size_t n,
 
 	bsz = sizeof(struct sfs_blockmeta);
 
-	step = SFS_SECTORSIZE - bsz;
+	step = dev->sectorsize - bsz;
 	block = in.blocks.block[0];
 	for (p = 0; p < sz; p += step) {
-		char sectorbuf[SFS_SECTORSIZE];
+		char sectorbuf[dev->sectorsize];
 		struct sfs_blockmeta *meta;
 
 		sfs_readdatablock(dev, block, sectorbuf);
@@ -633,10 +642,10 @@ size_t sfs_inodeget(struct device *dev, size_t n, void *data, size_t sz)
 
 	bsz = sizeof(struct sfs_blockmeta);
 
-	step = SFS_SECTORSIZE - bsz;
+	step = dev->sectorsize - bsz;
 	block = in.blocks.block[0];
 	for (p = 0; p < in.size; p += step) {
-		char sectorbuf[SFS_SECTORSIZE];
+		char sectorbuf[dev->sectorsize];
 
 		sfs_readdatablock(dev, block, sectorbuf);
 
@@ -653,7 +662,7 @@ size_t sfs_inoderead(struct device *dev, size_t n, size_t offset,
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	char indirectbuf[SFS_SECTORSIZE];
+	char indirectbuf[SFS_MAXSECTORSIZE];
 	size_t *indirectidx;
 	size_t readsz, i;
 
@@ -680,17 +689,17 @@ size_t sfs_inoderead(struct device *dev, size_t n, size_t offset,
 
 	readsz = min(in.size - offset - 1, sz);
 	for (i = 0; i < readsz; ) {
-		char sectorbuf[SFS_SECTORSIZE];
+		char sectorbuf[SFS_MAXSECTORSIZE];
 		size_t blockn, b, l;
 
-		blockn = (i + offset) / SFS_DATABLOCKSIZE;
+		blockn = (i + offset) / sfs_datablocksize(dev);
 	
 		if (blockn < 2)
 			sfs_readdatablock(dev, in.blocks.block[blockn], sectorbuf);
 		else
 			sfs_readdatablock(dev, indirectidx[blockn - 2], sectorbuf);
 		
-		b = (i + offset) % SFS_DATABLOCKSIZE;
+		b = (i + offset) % sfs_datablocksize(dev);
 		l = min(sfs_blockgetmeta(sectorbuf)->datasize - b, readsz - i);	
 	
 		memcpy(data + i, sfs_blockgetdata(sectorbuf) + b, l);
@@ -706,7 +715,7 @@ size_t sfs_inodewrite(struct device *dev, size_t n, size_t offset,
 {
 	struct sfs_superblock sb;
 	struct sfs_inode in;
-	char indirectbuf[SFS_SECTORSIZE];
+	char indirectbuf[SFS_MAXSECTORSIZE];
 	size_t *indirectidx;
 	size_t i, r;
 
@@ -733,18 +742,18 @@ size_t sfs_inodewrite(struct device *dev, size_t n, size_t offset,
 	}
 
 	for (i = 0; i < sz; ) {
-		char sectorbuf[SFS_SECTORSIZE];
+		char sectorbuf[SFS_MAXSECTORSIZE];
 		size_t block, blockid, b, l;
 
-		blockid = (i + offset) / SFS_DATABLOCKSIZE;
+		blockid = (i + offset) / sfs_datablocksize(dev);
 	
 		block = (blockid < 2) ? in.blocks.block[blockid]
 			: indirectidx[blockid - 2];
 			
 		sfs_readdatablock(dev, block, sectorbuf);
 
-		b = (i + offset) % SFS_DATABLOCKSIZE;
-		l = min(SFS_DATABLOCKSIZE - b, sz - i);
+		b = (i + offset) % sfs_datablocksize(dev);
+		l = min(sfs_datablocksize(dev) - b, sz - i);
 
 		memcpy(sfs_blockgetdata(sectorbuf) + b, data + i, l);
 	
@@ -814,7 +823,7 @@ size_t sfs_dumpinode(struct device *dev, size_t n, void *in)
 
 size_t sfs_dumpblockmeta(struct device *dev, size_t n, void *meta)
 {
-	char buf[SFS_SECTORSIZE];
+	char buf[SFS_MAXSECTORSIZE];
 
 	sfs_readdatablock(dev, n, buf);
 

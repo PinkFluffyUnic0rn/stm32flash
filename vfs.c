@@ -773,6 +773,8 @@ const char *vfs_strerror(enum ERROR e)
 		"not a regular file",
 		"directory is not empty",
 		"directory already exists",
+		"device sector size is too big",
+		"device write size is too big ",
 		"mount point not found",
 		"path is too long",
 		"maximum number of mount points reached",
