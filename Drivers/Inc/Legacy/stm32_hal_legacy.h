@@ -37,16 +37,12 @@ extern "C" {
 #define AES_CLEARFLAG_CCF               CRYP_CLEARFLAG_CCF
 #define AES_CLEARFLAG_RDERR             CRYP_CLEARFLAG_RDERR
 #define AES_CLEARFLAG_WRERR             CRYP_CLEARFLAG_WRERR
-#if defined(STM32U5) || defined(STM32H7) || defined(STM32MP1)
+#if defined(STM32H7) || defined(STM32MP1)
 #define CRYP_DATATYPE_32B               CRYP_NO_SWAP
 #define CRYP_DATATYPE_16B               CRYP_HALFWORD_SWAP
 #define CRYP_DATATYPE_8B                CRYP_BYTE_SWAP
 #define CRYP_DATATYPE_1B                CRYP_BIT_SWAP
-#if defined(STM32U5)
-#define CRYP_CCF_CLEAR                  CRYP_CLEAR_CCF
-#define CRYP_ERR_CLEAR                  CRYP_CLEAR_RWEIF
-#endif /* STM32U5 */
-#endif /* STM32U5 || STM32H7 || STM32MP1 */
+#endif /* STM32H7 || STM32MP1 */
 /**
   * @}
   */
@@ -279,7 +275,7 @@ extern "C" {
 #define DAC_WAVEGENERATION_NOISE                        DAC_WAVE_NOISE
 #define DAC_WAVEGENERATION_TRIANGLE                     DAC_WAVE_TRIANGLE
 
-#if defined(STM32G4) || defined(STM32L5) || defined(STM32H7) || defined (STM32U5)
+#if defined(STM32G4) || defined(STM32H7) || defined (STM32U5)
 #define DAC_CHIPCONNECT_DISABLE       DAC_CHIPCONNECT_EXTERNAL
 #define DAC_CHIPCONNECT_ENABLE        DAC_CHIPCONNECT_INTERNAL
 #endif
@@ -1598,6 +1594,8 @@ extern "C" {
 #define ETH_MAC_SMALL_FIFO_WRITE_ACTIVE       0x00000004U  /* MAC small FIFO write controller active */
 #define ETH_MAC_SMALL_FIFO_RW_ACTIVE          0x00000006U  /* MAC small FIFO read / write controllers active */
 #define ETH_MAC_MII_RECEIVE_PROTOCOL_ACTIVE   0x00000001U  /* MAC MII receive protocol engine active */
+
+#define ETH_TxPacketConfig                    ETH_TxPacketConfig_t  /* Transmit Packet Configuration structure definition */
 
 /**
   * @}
@@ -3647,7 +3645,7 @@ extern "C" {
 #define RCC_MCOSOURCE_PLLCLK_DIV2   RCC_MCO1SOURCE_PLLCLK_DIV2
 
 #if defined(STM32L4) || defined(STM32WB) || defined(STM32G0) || defined(STM32G4) || defined(STM32L5) || \
-      defined(STM32WL) || defined(STM32C0)
+    defined(STM32WL) || defined(STM32C0)
 #define RCC_RTCCLKSOURCE_NO_CLK     RCC_RTCCLKSOURCE_NONE
 #else
 #define RCC_RTCCLKSOURCE_NONE       RCC_RTCCLKSOURCE_NO_CLK
@@ -3896,7 +3894,7 @@ extern "C" {
   */
 #if defined (STM32G0) || defined (STM32L5) || defined (STM32L412xx) || defined (STM32L422xx) || \
     defined (STM32L4P5xx)|| defined (STM32L4Q5xx) || defined (STM32G4) || defined (STM32WL) || defined (STM32U5) || \
-    defined (STM32WBA) || defined (STM32H5) || defined (STM32C0)
+    defined (STM32WBA) || defined (STM32H5) || defined (STM32C0) 
 #else
 #define __HAL_RTC_CLEAR_FLAG                      __HAL_RTC_EXTI_CLEAR_FLAG
 #endif
@@ -3932,7 +3930,9 @@ extern "C" {
 #endif   /* STM32F1 */
 
 #if defined (STM32F0) || defined (STM32F2) || defined (STM32F3) || defined (STM32F4) || defined (STM32F7) || \
-    defined (STM32L0) || defined (STM32L1)
+    defined (STM32H7) || \
+    defined (STM32L0) || defined (STM32L1) || \
+    defined (STM32WB)
 #define __HAL_RTC_TAMPER_GET_IT                   __HAL_RTC_TAMPER_GET_FLAG
 #endif
 

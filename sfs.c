@@ -1,4 +1,4 @@
-#include "stm32f1xx_hal.h"
+#include "stm32f4xx_hal.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -782,10 +782,6 @@ size_t sfs_inodewrite(struct device *dev, size_t n, size_t offset,
 			max(offset + sz, in.size))))
 		return r;
 
-	sfs_readsuperblock(dev, &sb);
-	sfs_readinode(dev, &in, n, &sb);
-
-
 	if (in.blocks.blockindirect != 0) {
 		size_t r;
 
@@ -821,6 +817,10 @@ size_t sfs_inodewrite(struct device *dev, size_t n, size_t offset,
 
 		i += l;
 	}
+
+	sfs_writesuperblock(dev, &sb);
+	sfs_writeinode(dev, &in, n, &sb);
+
 
 	return sz;
 }
