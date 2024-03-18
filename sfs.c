@@ -239,6 +239,23 @@ static size_t sfs_writedatablock(struct device *dev,
 	return 0;
 }
 
+static size_t sfs_createindirectblock(struct device *dev,
+	struct sfs_superblock *sb, char *buf)
+{
+	size_t block;
+
+	block = sb->freeblocks;
+
+	sfs_readdatablock(dev, block, buf);
+
+	sb->freeblocks = sfs_blockgetmeta(buf)->next;
+
+	sfs_blockgetmeta(buf)->next = 0;
+	sfs_blockgetmeta(buf)->datasize = 0;
+
+	return block;
+}
+
 static size_t sfs_createdatablock(struct device *dev,
 	struct sfs_superblock *sb, size_t sz,
 	struct sfs_allocedblocks *al)
@@ -252,20 +269,13 @@ static size_t sfs_createdatablock(struct device *dev,
 	if (sz == 0)
 		sz = SFS_INITBLOCKSIZE;
 
-	al->block[0] = al->block[1] = al->block[2]
-		= al->blockindirect = 0;
+	al->block[0] = al->block[1] = al->blockindirect = 0;
+	if (sz / SFS_INDIRECTSIZE >= 2) {
+		al->blockindirect = sfs_createindirectblock(dev, sb,
+			indirectbuf);
+		if (fs_iserror(al->blockindirect))
+			return al->blockindirect;
 
-	if (sz / SFS_INDIRECTSIZE > 2) {
-		struct sfs_allocedblocks indal;
-		size_t r;
-
-		r = sfs_createdatablock(dev, sb, SFS_INDIRECTSIZE, &indal);
-		if (fs_iserror(r))
-			return r;
-
-		al->blockindirect = indal.block[0];
-
-		sfs_readdatablock(dev, al->blockindirect, indirectbuf);
 		indirectidx = (size_t *) (indirectbuf
 			+ sizeof(struct sfs_blockmeta));
 	}
@@ -385,29 +395,21 @@ static size_t sfs_inodeextent(struct device *dev,
 	}
 
 	// allocate indirect addressing block, if new size requires it
-	if (sz / SFS_INDIRECTSIZE > 2) {
-		struct sfs_allocedblocks indal;
-		size_t r;
+	if (sz / SFS_INDIRECTSIZE >= 2) {
+		al->blockindirect = sfs_createindirectblock(dev, sb,
+			indirectbuf);
+		if (fs_iserror(al->blockindirect))
+			return al->blockindirect;
 
-		r = sfs_createdatablock(dev, sb, SFS_INDIRECTSIZE, &indal);
-		if (fs_iserror(r))
-			return r;
-
-		al->blockindirect = indal.block[0];
-
-		sfs_readdatablock(dev, al->blockindirect, indirectbuf);
 		indirectidx = (size_t *) (indirectbuf
 			+ sizeof(struct sfs_blockmeta));
 	}
-
 	// get new blocks
 	block = sb->freeblocks;
 
 	restsz = (sz - cursz) + (sz - cursz) / SFS_SECTORSIZE * sizeof(meta);
 	cursector = nextsector = sb->freeblocks;
 	while (restsz > 0 && nextsector != 0) {
-		char buf[SFS_SECTORSIZE];
-
 		cursector = nextsector;
 	
 		if (blockcnt >= SFS_INDIRECTSIZE / sizeof(size_t))
@@ -441,7 +443,7 @@ static size_t sfs_inodeextent(struct device *dev,
 	// append new added blocks to closng old block's tail
 	sfs_readdatablock(dev, curendsector, buf);
 	sfs_blockgetmeta(buf)->next = block;
-	sfs_writedatablock(dev, cursector, &meta);
+	sfs_writedatablock(dev, curendsector, buf);
 
 	// update indirect addressing block
 	if (al->blockindirect != 0)
@@ -460,14 +462,11 @@ static size_t sfs_inoderesize(struct device *dev, size_t n, size_t sz)
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (sz > in.allocsize) {
-		in.allocsize = (sz * 2 / SFS_DATABLOCKSIZE + 1)
+		in.allocsize = ((sz + 1) / SFS_DATABLOCKSIZE)
 			* SFS_DATABLOCKSIZE;
-		
-		r = sfs_deletedatablock(dev, &(in.blocks), &sb);
-		if (fs_iserror(r))
-			return r;
 
-		r = sfs_createdatablock(dev, &sb, sz, &(in.blocks));
+		r = sfs_inodeextent(dev, &sb, in.allocsize, &(in.blocks));
+
 		if (fs_iserror(r))
 			return r;
 	}

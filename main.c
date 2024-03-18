@@ -332,7 +332,7 @@ int createbiginode(const char **toks)
 	sscanf(toks[1], "%d", &sz);
 
 	sprintf(b, "new inode address: %x\n\r",
-		(addr = fs[0].inodecreate(curdev, insz, FS_FILE)));
+		(addr = fs[0].inodecreate(curdev, 32, FS_FILE)));
 
 	for (i = 0; i < insz; ++i)
 		buf[i] = (i % ('z' - 'a')) + 'a';
