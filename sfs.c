@@ -316,8 +316,10 @@ static size_t sfs_createdatablock(struct device *dev,
 	meta.datasize = 0;
 
 	sfs_writedatablock(dev, cursector, &meta);
-	if (al->blockindirect != 0)
+	if (al->blockindirect != 0) {
+		sfs_blockgetmeta(indirectbuf)->datasize = blockcnt - 2;
 		sfs_writedatablock(dev, al->blockindirect, &indirectbuf);
+	}
 
 	return block;
 }
@@ -392,6 +394,8 @@ static size_t sfs_inodeextent(struct device *dev,
 		cursz += SFS_DATABLOCKSIZE;
 
 		nextsector = sfs_blockgetmeta(buf)->next;
+		
+		++blockcnt;
 	}
 
 	// allocate indirect addressing block, if new size requires it
@@ -434,10 +438,10 @@ static size_t sfs_inodeextent(struct device *dev,
 
 	sb->freeblocks = nextsector;
 
+	// close tail of new added blocks
 	meta.next = 0;
 	meta.datasize = 0;
 
-	// close tail of new added blocks
 	sfs_writedatablock(dev, cursector, &meta);
 
 	// append new added blocks to closng old block's tail
@@ -446,35 +450,30 @@ static size_t sfs_inodeextent(struct device *dev,
 	sfs_writedatablock(dev, curendsector, buf);
 
 	// update indirect addressing block
-	if (al->blockindirect != 0)
+	if (al->blockindirect != 0) {
+		sfs_blockgetmeta(indirectbuf)->datasize = blockcnt - 2;
 		sfs_writedatablock(dev, al->blockindirect, &indirectbuf);
+	}
 
 	return 0;
 }
 
-static size_t sfs_inoderesize(struct device *dev, size_t n, size_t sz)
+static size_t sfs_inoderesize(struct device *dev, struct sfs_inode *in,
+	struct sfs_superblock *sb, size_t sz)
 {
-	struct sfs_superblock sb;
-	struct sfs_inode in;
-	size_t r;
-
-	sfs_readsuperblock(dev, &sb);
-	sfs_readinode(dev, &in, n, &sb);
-
-	if (sz > in.allocsize) {
-		in.allocsize = ((sz + 1) / SFS_DATABLOCKSIZE)
+	if (sz > in->allocsize) {
+		size_t r;
+	
+		in->allocsize = (sz / SFS_DATABLOCKSIZE + 1)
 			* SFS_DATABLOCKSIZE;
 
-		r = sfs_inodeextent(dev, &sb, in.allocsize, &(in.blocks));
+		r = sfs_inodeextent(dev, sb, in->allocsize, &(in->blocks));
 
 		if (fs_iserror(r))
 			return r;
 	}
 
-	in.size = sz;
-
-	sfs_writeinode(dev, &in, n, &sb);
-	sfs_writesuperblock(dev, &sb);
+	in->size = sz;
 
 	return 0;
 }
@@ -649,7 +648,7 @@ size_t sfs_inodeset(struct device *dev, size_t n,
 	if (n < sb.inodestart || n % sb.inodesz)
 		return FS_EWRONGADDR;
 
-	if (fs_iserror(r = sfs_inoderesize(dev, n, sz)))
+	if (fs_iserror(r = sfs_inoderesize(dev, &in, &sb, sz)))
 		return r;
 
 	bsz = sizeof(struct sfs_blockmeta);
@@ -672,6 +671,9 @@ size_t sfs_inodeset(struct device *dev, size_t n,
 
 		block = meta->next;
 	}
+
+	sfs_writesuperblock(dev, &sb);
+	sfs_writeinode(dev, &in, n, &sb);
 
 	return 0;
 }
@@ -776,9 +778,13 @@ size_t sfs_inodewrite(struct device *dev, size_t n, size_t offset,
 	if (n < sb.inodestart || n % sb.inodesz)
 		return EWRONGADDR;
 
-	if (fs_iserror(r = sfs_inoderesize(dev, n,
+	if (fs_iserror(r = sfs_inoderesize(dev, &in, &sb, 
 			max(offset + sz, in.size))))
 		return r;
+
+	sfs_readsuperblock(dev, &sb);
+	sfs_readinode(dev, &in, n, &sb);
+
 
 	if (in.blocks.blockindirect != 0) {
 		size_t r;
