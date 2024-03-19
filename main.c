@@ -9,6 +9,7 @@
 #include "sfs.h"
 #include "w25.h"
 #include "uartterm.h"
+#include "calls.h"
 
 #define PRESCALER 72
 #define TIMPERIOD 0xffff
@@ -542,7 +543,7 @@ int writefile(const char **toks)
 	
 	sscanf(toks[1], "%d", &fd);
 
-	if ((r = write(fd, toks[2], strlen(toks[2]))) < 0) {
+	if ((r = write(fd, toks[2], strlen(toks[2]) + 1)) < 0) {
 		ut_write("error: %s\n\r", vfs_strerror(r));
 		
 		return 0;
@@ -624,6 +625,58 @@ int vfscd(const char **toks)
 	return 0;
 }
 
+int heaptest(const char **toks)
+{
+	char *p[256];
+	int i;
+	
+	ut_write("initial break: %p\n\r", _sbrk(0));
+
+	for (i = 0; i < 128; ++i)
+		p[i] = malloc(32);
+
+	for (i = 0; i < 4; ++i)
+		p[128 + i] = malloc(1024);
+
+	for (i = 0; i < 132; ++i) {
+		ut_write("%p ", p[i] - 12);
+		
+		if (((i + 1) % 8) == 0)
+			ut_write("\n\r");
+	}
+	ut_write("\n\r");
+
+	ut_write("current break: %p\n\r", _sbrk(0));
+
+	for (i = 0; i < 132; ++i)
+		free(p[i]);
+	
+	ut_write("current break (after free): %p\n\r", _sbrk(0));
+	
+	for (i = 0; i < 128; ++i)
+		p[i] = malloc(32);
+	
+	for (i = 0; i < 4; ++i)
+		p[128 + i] = malloc(1024);
+	
+	for (i = 0; i < 132; ++i) {
+		ut_write("%p ", p[i] - 12);
+		
+		if (((i + 1) % 8) == 0)
+			ut_write("\n\r");
+	}
+	ut_write("\n\r");
+	
+	ut_write("current break: %p\n\r", _sbrk(0));
+
+	for (i = 0; i < 132; ++i)
+		free(p[i]);
+	
+	ut_write("current break (after free): %p\n\r", _sbrk(0));
+	
+	return 0;
+}
+
 int main(void)
 {
 	HAL_Init();
@@ -636,12 +689,13 @@ int main(void)
 	usart1_init();
 	spi1_init();
 	flash_init();
-
+	
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_Base_Start_IT(&htim2);
 
 	__HAL_TIM_SET_COUNTER(&htim2, 0);
 
+	vfsinit();
 	ut_init(&huart1);
 
 	ut_addcommand("sd",		setdevice);
@@ -671,6 +725,8 @@ int main(void)
 	ut_addcommand("rm",		unlinkfile);
 	ut_addcommand("ls",		listvfsdir);
 	ut_addcommand("cd",		vfscd);
+	
+	ut_addcommand("heaptest",	heaptest);
 
 	printhelp();
 

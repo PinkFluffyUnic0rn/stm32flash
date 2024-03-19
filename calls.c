@@ -4,29 +4,20 @@
 
 void *_sbrk(ptrdiff_t incr);
 
-struct freeblock *freehead;
+struct block *freehead = NULL;
 
-struct freeblock {
+struct block {
 	size_t size;
-	struct freeblock *p;
-	struct freeblock *n;
+	struct block *p;
+	struct block *n;
 };
-
-void heapinit()
-{
-	freehead = (struct freeblock *) _sbrk(sizeof(struct freeblock));
-
-	freehead->size = sizeof(struct freeblock);
-	freehead->n = NULL;
-	freehead->p = NULL;
-}
 
 void *malloc(size_t size)
 {
-	struct freeblock *fb;
+	struct block *fb;
 	char *b;
 
-	size += sizeof(struct freeblock);
+	size += sizeof(struct block);
 	size = (size & 0xfffffff8) + 0x8;
 
 	fb = freehead;
@@ -40,7 +31,7 @@ void *malloc(size_t size)
 			if (fb->n != NULL)
 				fb->n->p = fb->p;
 
-			return ((unsigned char *) fb + sizeof(size_t));
+			return ((unsigned char *) fb + sizeof(struct block));
 		}
 
 		fb = fb->n;
@@ -51,16 +42,16 @@ void *malloc(size_t size)
 	
 	*((size_t *) b) = size;
 
-	return (b + sizeof(size_t));
+	return (b + sizeof(struct block));
 }
 
 void free(void *ptr)
 {
-	struct freeblock *fb;
+	struct block *fb;
 
-	ptr -= sizeof(size_t);
+	ptr -= sizeof(struct block);
 
-	fb = (struct freeblock *) ptr;
+	fb = (struct block *) ptr;
 
 	fb->p = NULL;
 	fb->n = freehead;
@@ -69,16 +60,28 @@ void free(void *ptr)
 
 	freehead = fb;
 
-	for (fb = freehead; fb != NULL; fb = fb->n) {
+	for (fb = freehead; fb != NULL;) {
 		size_t sz;
 	
 		sz = *((size_t *) fb);
 
 		if (((char * ) fb) + sz == _sbrk(0)) {
-			_sbrk(-sz);
+			if (fb->p != NULL)
+				fb->p->n = fb->n;
+			else
+				freehead = fb->n;
+			
+			if (fb->n != NULL)
+				fb->n->p = fb->p;
 
-			return;
+			fb = fb->n;
+			
+			_sbrk(-((ptrdiff_t) sz));
+		
+			continue;
 		}
+ 
+		fb = fb->n;
 	}
 }
 

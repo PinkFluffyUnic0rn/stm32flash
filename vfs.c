@@ -1,4 +1,5 @@
 #include "vfs.h"
+#include "calls.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -6,7 +7,7 @@
 struct vfsmount {
 	struct device 			*dev;
 	const char			*mountpoint[PATHMAXTOK];
-	char				mountpointbuf[PATHMAX];
+	char				*mntpntbuf;
 	const struct filesystem		*fs;
 };
 
@@ -16,8 +17,8 @@ struct inode {
 };
 
 struct file {
-	char		path[PATHMAX];
-	char		name[PATHMAX];
+	char		*path;
+	char		*name;
 	int	 	flags;
 	size_t		offset;
 	struct inode	inode;
@@ -28,13 +29,55 @@ struct lookupres {
 	struct inode 	inode;
 };
 
-struct file files[FDMAX];
+struct file *files[FDMAX];
 int fileset;
 
-struct vfsmount mounts[MOUNTMAX];
+struct vfsmount *mounts[MOUNTMAX];
 int mountset;
 
-char pwd[PATHMAX];
+char *pwd;
+
+static char *strcreate(const char *src)
+{
+	char *s;
+
+	if ((s = malloc(strlen(src) + 1)) == NULL)
+		return NULL;
+
+	strcpy(s, src);
+
+	return s;
+}
+
+static void strdelete(char *s)
+{
+	free(s);
+}
+
+static struct file *filecreate(const char *path, const char *name,
+	const struct inode *in)
+{
+	struct file *f;
+
+	if ((f = malloc(sizeof(struct file))) == NULL)
+		return NULL;
+
+	f->path = strcreate(path);
+	f->name = strcreate(name);
+	f->flags = 0;
+	f->offset = 0;
+	f->inode = *in;
+	
+	return f;
+}
+
+static void filedelete(struct file *f)
+{
+	strdelete(f->path);
+	strdelete(f->name);
+
+	free(f);
+}
 
 static int splitpath(char *path, const char **toks, size_t sz)
 {
@@ -125,7 +168,7 @@ static int findmountpoint(const char **toks)
 
 	for (i = 0; i < sizeof(int) * 8; ++i) {
 		if (isinset(mountset, i)) {
-			if (pathcmp(mounts[i].mountpoint, toks))
+			if (pathcmp(mounts[i]->mountpoint, toks))
 				return i;
 		}
 	}
@@ -177,7 +220,7 @@ static size_t dirlookup(const char **toks, struct lookupres *lr,
 		return curmountid;
 	}
 	
-	parn = mounts[curmountid].fs->rootinode;
+	parn = mounts[curmountid]->fs->rootinode;
 
 	for (p = toks; *p != NULL; ++p) {
 		struct fs_dirstat st;
@@ -190,13 +233,13 @@ static size_t dirlookup(const char **toks, struct lookupres *lr,
 		mountid = findmountpoint((const char **) curpath);
 		if (mountid >= 0) {
 			curmountid = mountid;
-			parn = mounts[curmountid].fs->rootinode;
+			parn = mounts[curmountid]->fs->rootinode;
 			continue;
 		} else if (mountid != EMOUNTNOTFOUND)
 			return mountid;
 
-		fs = mounts[curmountid].fs;
-		dev = mounts[curmountid].dev;
+		fs = mounts[curmountid]->fs;
+		dev = mounts[curmountid]->dev;
 
 		fs->inodestat(dev, parn, &st);
 
@@ -216,7 +259,7 @@ static size_t dirlookup(const char **toks, struct lookupres *lr,
 	}
 
 	lr->name = (*p == NULL) ? "/" : *(p - 1);
-	lr->inode.mount = mounts + curmountid;
+	lr->inode.mount = *(mounts + curmountid);
 	lr->inode.addr = parn;
 
 	return 0;
@@ -373,11 +416,12 @@ static int makeroot(struct device *dev, const struct filesystem *fs)
 	return 0;
 }
 
-int init()
+int vfsinit()
 {
 	mountset = fileset = 0;
 
-	strcpy(pwd, "/");
+	if ((pwd = strcreate("/")) == NULL)
+		return EOUTOFMEMORY;
 
 	return 0;
 }
@@ -392,18 +436,22 @@ int mount(struct device *dev, const char *target,
 	if ((mountid = allocinset(&mountset)) < 0)
 		return EMOUNTSISFULL;
 
-	strcpy(mounts[mountid].mountpointbuf, target);
+	if ((mounts[mountid] = malloc(sizeof(struct vfsmount))) == NULL)
+		return EOUTOFMEMORY;
 
-	if ((r = splitpath(mounts[mountid].mountpointbuf,
+	if ((mounts[mountid]->mntpntbuf = strcreate(target)) == NULL)
+		return EOUTOFMEMORY;
+
+	if ((r = splitpath(mounts[mountid]->mntpntbuf,
 			toks, PATHMAXTOK)) < 0) {
 		freefromset(&mountset, mountid);
 		return r;
 	}
 
-	mounts[mountid].dev = dev;
-	mounts[mountid].fs = fs;
+	mounts[mountid]->dev = dev;
+	mounts[mountid]->fs = fs;
 
-	memmove(mounts[mountid].mountpoint, toks,
+	memmove(mounts[mountid]->mountpoint, toks,
 		sizeof(char *) * PATHMAXTOK);
 
 	return 0;
@@ -426,6 +474,9 @@ int umount(const char *target)
 
 	freefromset(&mountset, mountid);
 
+	free(mounts[mountid]->mntpntbuf);
+	free(mounts[mountid]);
+
 	return 0;
 }
 
@@ -443,12 +494,12 @@ int mountlist(const char **list, char *buf, size_t bufsz)
 			
 			list[c++] = bufp;
 
-			sprintf(bufp, "%-12s ", mounts[i].dev->name);
+			sprintf(bufp, "%-12s ", mounts[i]->dev->name);
 
-			for (p = mounts[i].mountpoint; *p != NULL; ++p)
+			for (p = mounts[i]->mountpoint; *p != NULL; ++p)
 				sprintf(bufp + strlen(bufp), "/%s", *p);
 	
-			if (*(mounts[i].mountpoint) == NULL)
+			if (*(mounts[i]->mountpoint) == NULL)
 				strcat(bufp, "/");
 
 			bufp += strlen(bufp) + 1;
@@ -475,7 +526,7 @@ int format(const char *target)
 	if ((mountid = findmountpoint(toks)) < 0)
 		return mountid;
 	
-	mnt = mounts + mountid;
+	mnt = *(mounts + mountid);
 
 	mnt->fs->format(mnt->dev);
 
@@ -492,7 +543,7 @@ int cd(const char *path)
 	struct fs_dirstat st;
 	const char **p;
 	int r;
-	size_t n;
+	size_t n, sz;
 
 	strcpy(pathbuf, path);
 
@@ -509,6 +560,12 @@ int cd(const char *path)
 	fs->inodestat(dev, n, &st);
 	if (st.type != FS_DIR)
 		return ENOTADIR;
+	
+	for (p = toks, sz = 0; *p != NULL; ++p)
+		sz += strlen(*p) + 1;
+
+	if ((pwd = realloc(pwd, sz + 1)) == NULL)
+		return EOUTOFMEMORY;
 
 	strcpy(pwd, "/");
 	for (p = toks; *p != NULL; ++p) {
@@ -545,11 +602,8 @@ int open(const char *path, int flags)
 	if ((fd = allocinset(&fileset)) < 0 || fd >= FDMAX)
 		return ERUNOUTOFFD;
 
-	strcpy(files[fd].path, path);
-	strcpy(files[fd].name, lr.name);
-	files[fd].flags = 0;
-	files[fd].offset = 0;
-	files[fd].inode = lr.inode;
+	if ((files[fd] = filecreate(path, lr.name, &(lr.inode))) == NULL)
+		return EOUTOFMEMORY;
 
 	return fd;
 }
@@ -558,8 +612,10 @@ int close(int fd)
 {
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
-
+	
 	freefromset(&fileset, fd);
+	
+	filedelete(files[fd]);
 
 	return 0;
 }
@@ -572,15 +628,15 @@ int write(int fd, const void *buf, size_t count)
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
 
-	mnt = files[fd].inode.mount;
+	mnt = files[fd]->inode.mount;
 
-	n = files[fd].inode.addr;
+	n = files[fd]->inode.addr;
 
 	if (fs_iserror(r = mnt->fs->inodewrite(mnt->dev, n,
-			files[fd].offset, buf, count)))
+			files[fd]->offset, buf, count)))
 		return fs_uint2interr(r);
 
-	files[fd].offset += count;
+	files[fd]->offset += count;
 
 	if (fs_iserror(r = mnt->fs->inodesettype(mnt->dev, n, FS_FILE)))
 		return fs_uint2interr(r);
@@ -596,14 +652,14 @@ int read(int fd, void *buf, size_t count)
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
 
-	mnt = files[fd].inode.mount;
+	mnt = files[fd]->inode.mount;
 
-	r = mnt->fs->inoderead(mnt->dev, files[fd].inode.addr,
-		files[fd].offset, buf, count);
+	r = mnt->fs->inoderead(mnt->dev, files[fd]->inode.addr,
+		files[fd]->offset, buf, count);
 	if (fs_iserror(r))
 		return fs_uint2interr(r);
 
-	files[fd].offset += count;
+	files[fd]->offset += count;
 
 	return r;
 }
@@ -622,7 +678,7 @@ int lseek(int fd, size_t offset)
 	if (!isinset(fileset, fd))
 		return EFDNOTSET;
 
-	files[fd].offset = offset;
+	files[fd]->offset = offset;
 
 	return 0;
 }
@@ -782,7 +838,8 @@ const char *vfs_strerror(enum ERROR e)
 		"run of of file descriptors",
 		"file descriptor is not set",
 		"directory is a mount point",
-		"invalid path"
+		"invalid path",
+		"out of memory"
 	};
 
 	return strerror[-e];

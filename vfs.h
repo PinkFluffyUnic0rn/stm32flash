@@ -9,8 +9,8 @@
 
 #define PATHMAXTOK 24
 #define PATHMAX 128
-#define MOUNTMAX 8
-#define FDMAX 4
+#define MOUNTMAX 32
+#define FDMAX 32
 #define ERRORMAX 0xff
 #define DIRRECORDSIZE 32
 #define DIRMAX (4096 - 64)
@@ -39,9 +39,11 @@ enum ERROR {
 	ERUNOUTOFFD	= -0x12,
 	EFDNOTSET	= -0x13,
 	EISMOUNTPOINT	= -0x14,
-	EWRONGPATH	= -0x15
+	EWRONGPATH	= -0x15,
+	EOUTOFMEMORY	= -0x16
 };
 
+int vfsinit();
 int format(const char *target);
 int mount(struct device *dev, const char *target,
 	const struct filesystem *fs);
