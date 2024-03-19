@@ -30,8 +30,6 @@
 
 const int Delay[] = {0, 10, 100, 1000, 5000};
 
-int sfs_dircreate(struct device *dev, const char *path);
-
 static int sfs_rewritesector(struct device *dev, size_t addr,
 	const void *data, size_t sz)
 {
@@ -447,10 +445,10 @@ size_t sfs_format(struct device *dev)
 	size_t inodespersector, inodecnt, p, i;
 
 	if (dev->sectorsize > SFS_MAXSECTORSIZE)
-		return ESECTORTOOBIG;
+		return FS_ESECTORTOOBIG;
 
 	if (dev->writesize > SFS_MAXWRITESIZE)
-		return EWRITETOOBIG;
+		return FS_EWRITETOOBIG;
 
 	inodespersector = dev->sectorsize / sizeof(struct sfs_inode);
 
@@ -635,7 +633,7 @@ size_t sfs_inodeget(struct device *dev, size_t n, void *data, size_t sz)
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (n < sb.inodestart || n % sb.inodesz)
-		return EWRONGADDR;
+		return FS_EWRONGADDR;
 
 	if (sz < in.size)
 		return FS_EWRONGSIZE;
@@ -670,7 +668,7 @@ size_t sfs_inoderead(struct device *dev, size_t n, size_t offset,
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (n < sb.inodestart || n % sb.inodesz)
-		return EWRONGADDR;
+		return FS_EWRONGADDR;
 
 	if (offset > in.size)
 		offset = in.size - 1;
@@ -723,7 +721,7 @@ size_t sfs_inodewrite(struct device *dev, size_t n, size_t offset,
 	sfs_readinode(dev, &in, n, &sb);
 
 	if (n < sb.inodestart || n % sb.inodesz)
-		return EWRONGADDR;
+		return FS_EWRONGADDR;
 
 	if (fs_iserror(r = sfs_inoderesize(dev, &in, &sb, 
 			max(offset + sz, in.size))))

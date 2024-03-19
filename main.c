@@ -365,28 +365,24 @@ int createbiginode(const char **toks)
 int dumpsb()
 {
 	struct sfs_superblock sb;
-	char b[512];
 	int i;
 
 	fs[0].dumpsuperblock(curdev, &sb);
 
-	b[0] = '\0';
-	sprintf(b + strlen(b), "checksum: %lx\r\n", sb.checksum);
-	sprintf(b + strlen(b), "inode count: %lx\r\n", sb.inodecnt);
-	sprintf(b + strlen(b), "inode size: %lu\r\n", sb.inodesz);
-	sprintf(b + strlen(b), "inodes start: %lx\r\n", sb.inodestart);
-	sprintf(b + strlen(b), "free inode: %lx\r\n", sb.freeinodes);
-	sprintf(b + strlen(b), "blocks start: %lx\r\n", sb.blockstart);
-	sprintf(b + strlen(b), "free block: %lx\r\n", sb.freeblocks);
+	ut_write("checksum: %lx\r\n", sb.checksum);
+	ut_write("inode count: %lx\r\n", sb.inodecnt);
+	ut_write("inode size: %lu\r\n", sb.inodesz);
+	ut_write("inodes start: %lx\r\n", sb.inodestart);
+	ut_write("free inode: %lx\r\n", sb.freeinodes);
+	ut_write("blocks start: %lx\r\n", sb.blockstart);
+	ut_write("free block: %lx\r\n", sb.freeblocks);
 
-	sprintf(b + strlen(b), "inodes checksums: ");
+	ut_write("inodes checksums: ");
 	for (i = 0; i < SFS_INODESECTORSCOUNT + 1; ++i) {
-		sprintf(b + strlen(b), "%lx%s", sb.inodechecksum[i],
+		ut_write("%lx%s", sb.inodechecksum[i],
 			((i != SFS_INODESECTORSCOUNT) ? ", " : ""));
 	}
-	sprintf(b + strlen(b), "\r\n");
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+	ut_write("\r\n");
 
 	return 0;
 }
@@ -395,24 +391,19 @@ int dumpin(const char *arg)
 {
 	size_t addr;
 	struct sfs_inode in;
-	char b[512];
 
 	sscanf(arg, "%x", &addr);
 
 	fs[0].dumpinode(curdev, addr, &in);
 
-	b[0] = '\0';
-	sprintf(b + strlen(b), "checksum: %lx\r\n", in.checksum);
-	sprintf(b + strlen(b), "next free: %lx\r\n", in.nextfree);
-	sprintf(b + strlen(b), "size: %lu\r\n", in.size);
-	sprintf(b + strlen(b), "allocsize: %lu\r\n", in.allocsize);
-	sprintf(b + strlen(b), "type: %lx\r\n", in.type);
-	sprintf(b + strlen(b), "block[0]: %x\r\n", in.blocks.block[0]);
-	sprintf(b + strlen(b), "block[1]: %x\r\n", in.blocks.block[1]);
-	sprintf(b + strlen(b), "indirect block: %x\r\n",
-		in.blocks.blockindirect);
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+	ut_write("checksum: %lx\r\n", in.checksum);
+	ut_write("next free: %lx\r\n", in.nextfree);
+	ut_write("size: %lu\r\n", in.size);
+	ut_write("allocsize: %lu\r\n", in.allocsize);
+	ut_write("type: %lx\r\n", in.type);
+	ut_write("block[0]: %x\r\n", in.blocks.block[0]);
+	ut_write("block[1]: %x\r\n", in.blocks.block[1]);
+	ut_write("indirect block: %x\r\n", in.blocks.blockindirect);
 
 	return 0;
 }
@@ -421,18 +412,14 @@ int dumpb(const char *arg)
 {
 	size_t addr;
 	struct sfs_blockmeta meta;
-	char b[512];
 
 	sscanf(arg, "%x", &addr);
 
 	fs[0].dumpblockmeta(curdev, addr, &meta);
 
-	b[0] = '\0';
-	sprintf(b + strlen(b), "checksum: %lx\r\n", meta.checksum);
-	sprintf(b + strlen(b), "next: %lx\r\n", meta.next);
-	sprintf(b + strlen(b), "datasize: %lu\r\n", meta.datasize);
-
-	HAL_UART_Transmit(&huart1, (uint8_t *) b, strlen(b), 100);
+	ut_write("checksum: %lx\r\n", meta.checksum);
+	ut_write("next: %lx\r\n", meta.next);
+	ut_write("datasize: %lu\r\n", meta.datasize);
 
 	return 0;
 }
@@ -446,12 +433,8 @@ int dump(const char **toks)
 	if (strcmp(toks[1], "bm") == 0)
 		return dumpb(toks[2]);
 	else {
-		char b[512];
+		ut_write("Unknown structure\n\r");
 
-		sprintf(b, "Unknown structure\n\r");
-
-		HAL_UART_Transmit(&huart1, (uint8_t *) b,
-			strlen(b), 100);
 		return 0;
 	}
 

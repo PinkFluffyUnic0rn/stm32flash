@@ -160,8 +160,10 @@ int ut_executecommand()
 		}
 	}
 
-	sprintf(s, "unknown command\n\r");
-	HAL_UART_Transmit(huart, (uint8_t *) s, strlen(s), 100);
+	if (strlen(Toks[0]) != 0) {
+		sprintf(s, "unknown command\n\r");
+		HAL_UART_Transmit(huart, (uint8_t *) s, strlen(s), 100);
+	}
 
 	return 0;
 }
