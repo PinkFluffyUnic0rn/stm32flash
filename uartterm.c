@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "uartterm.h"
 
@@ -24,20 +25,26 @@ static UART_HandleTypeDef *huart;
 static struct ut_command Commtable[32];
 static size_t Commcount;
 
-int ut_dumppage(void *data, char *text, size_t sz)
+int ut_dumppage(void *data, size_t sz)
 {
 	int r, i;
+	char text[2048];
+	size_t bufsz;
+
+	bufsz = 2048;
 
 	r = 0;
 
-	for (i = 0; i < 256; ++i) {
-		r += snprintf(text + r, sz - r,
+	for (i = 0; i < sz; ++i) {
+		r += snprintf(text + r, bufsz - r,
 			" %02x", ((uint8_t *) data)[i]);
 		if ((i + 1) % 16 == 0)
-			r += snprintf(text + r, sz - r , "\n\r");
+			r += snprintf(text + r, bufsz - r , "\n\r");
 	}
-	snprintf(text + r, sz - r, "\n\r");
+	snprintf(text + r, bufsz - r, "\n\r");
 
+	HAL_UART_Transmit(huart, (uint8_t *) text, strlen(text), 100);
+	
 	return 0;
 }
 
@@ -104,6 +111,20 @@ int ut_promptcommand()
 	sprintf(s, "enter comand: ");
 
 	HAL_UART_Transmit(huart, (uint8_t *) s, strlen(s), 100);
+
+	return 0;
+}
+
+int ut_write(const char *format, ...)
+{
+	char buf[1024];
+	va_list args;
+
+	va_start(args, format);
+
+	vsprintf(buf, format, args);
+
+	HAL_UART_Transmit(huart, (uint8_t *) buf, strlen(buf), 100);
 
 	return 0;
 }
