@@ -29,6 +29,11 @@ struct lookupres {
 	struct inode 	inode;
 };
 
+struct devfile {
+	size_t driverid;
+	size_t deviceid;
+};
+
 struct file *files[FDMAX];
 int fileset;
 
@@ -371,7 +376,7 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 	struct lookupres lr;
 	struct device *dev;
 	const struct filesystem *fs;
-	size_t n;
+	size_t n, rr;
 	int r, tokc;
 
 	strcpy(pathbuf, path);
@@ -396,7 +401,10 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 		size_t b;
 
 		b = 0xffffffff;
-		fs->inodeset(dev, n, &b, sizeof(uint32_t));
+		
+		rr = fs->inodeset(dev, n, &b, sizeof(uint32_t));
+		if (fs_iserror(rr))
+			return fs_uint2interr(rr);
 	}
 
 	return fs_uint2interr(diradd(&(lr.inode), name, n));
@@ -583,6 +591,8 @@ int open(const char *path, int flags)
 	const char *toks[PATHMAXTOK];
 	char pathbuf[PATHMAX];
 	struct lookupres lr;
+	struct vfsmount *mnt;
+	struct fs_dirstat st;
 	int fd, r;
 
 	strcpy(pathbuf, path);
@@ -600,6 +610,13 @@ int open(const char *path, int flags)
 		if ((r = dirlookup(toks, &lr, flags)) < 0)
 			return r;
 	}
+
+	mnt = lr.inode.mount;
+	
+	mnt->fs->inodestat(mnt->dev, lr.inode.addr, &st);
+	
+	if (st.type == FS_DIR)
+		return EISADIR;
 
 	if ((fd = allocinset(&fileset)) < 0 || fd >= FDMAX)
 		return ERUNOUTOFFD;
@@ -762,6 +779,42 @@ int mkdir(const char *path)
 	return mkfile(path, FS_DIR);
 }
 
+int mkdev(const char *path, size_t driverid, size_t deviceid)
+{
+	const char *toks[PATHMAXTOK];
+	char pathbuf[PATHMAX];
+	struct lookupres lr;
+	struct device *dev;
+	const struct filesystem *fs;
+	struct devfile df;
+	int r;
+	size_t rr;
+
+	if ((r = mkfile(path, FS_DEV)) < 0)
+		return r;
+
+	strcpy(pathbuf, path);
+
+	if ((r = splitpath(pathbuf, toks, PATHMAXTOK)) < 0)
+		return r;
+
+	if ((r = dirlookup(toks, &lr, 0)) < 0)
+		return r;
+
+	dev = lr.inode.mount->dev;
+	fs = lr.inode.mount->fs;
+
+	df.driverid = driverid;
+	df.deviceid = deviceid;
+
+	rr = fs->inodeset(dev, lr.inode.addr, &df,
+		sizeof(struct devfile));
+	if (fs_iserror(rr))
+		return fs_uint2interr(rr);
+
+	return 0;
+}
+
 int lsdir(const char *path, const char **list, char *buf, size_t bufsz)
 {
 	const char *toks[PATHMAXTOK];
@@ -842,7 +895,8 @@ const char *vfs_strerror(enum ERROR e)
 		"run of of file descriptors",
 		"file descriptor is not set",
 		"directory is a mount point",
-		"invalid path"
+		"invalid path",
+		"trying to open a directory"
 	};
 
 	return strerror[-e];

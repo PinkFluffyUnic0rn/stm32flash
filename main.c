@@ -582,6 +582,23 @@ int makedir(const char **toks)
 	return 0;
 }
 
+int makedev(const char **toks)
+{
+	int r;
+	size_t driverid, deviceid;
+
+	sscanf(toks[2], "%d", &driverid);
+	sscanf(toks[3], "%d", &deviceid);
+
+	if ((r = mkdev(toks[1], driverid, deviceid)) < 0) {
+		ut_write("error: %s\n\r", vfs_strerror(r));
+
+		return 0;
+	}
+
+	return 0;
+}
+
 int unlinkfile(const char **toks)
 {
 	int r;
@@ -725,6 +742,7 @@ int main(void)
 	ut_addcommand("write",		writefile);
 	ut_addcommand("close",		closefile);
 	ut_addcommand("mkdir",		makedir);
+	ut_addcommand("mkdev",		makedev);
 	ut_addcommand("rm",		unlinkfile);
 	ut_addcommand("ls",		listvfsdir);
 	ut_addcommand("cd",		vfscd);

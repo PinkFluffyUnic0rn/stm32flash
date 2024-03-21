@@ -41,7 +41,8 @@ enum ERROR {
 	ERUNOUTOFFD	= -0x14,
 	EFDNOTSET	= -0x15,
 	EISMOUNTPOINT	= -0x16,
-	EWRONGPATH	= -0x17
+	EWRONGPATH	= -0x17,
+	EISADIR		= -0x18
 };
 
 int vfsinit();
