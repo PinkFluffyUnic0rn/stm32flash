@@ -90,14 +90,17 @@ void *realloc(void *ptr, size_t size)
 	void *old, *new;
 	size_t oldsz;
 
-	old = ptr - sizeof(size_t);
-	oldsz = *((size_t *) old);
-
 	new = malloc(size);
 
-	memcpy(new, old, oldsz);
+	if (ptr == NULL)
+		return new;
 
-	free(old);
+	old = ptr - sizeof(struct block);
+	oldsz = *((size_t *) old) - sizeof(struct block);
 
-	return NULL;
+	memcpy(new, ptr, oldsz);
+
+	free(ptr);
+
+	return new;
 }

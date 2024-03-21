@@ -406,7 +406,7 @@ static int makeroot(struct device *dev, const struct filesystem *fs)
 {
 	size_t b, n;
 
-	n = fs->inodecreate(dev, FS_DIR, FS_DIR);
+	n = fs->inodecreate(dev, 4, FS_DIR);
 	if (fs_iserror(n))
 		return fs_uint2interr(n);
 
@@ -494,7 +494,9 @@ int mountlist(const char **list, char *buf, size_t bufsz)
 			
 			list[c++] = bufp;
 
-			sprintf(bufp, "%-12s ", mounts[i]->dev->name);
+			sprintf(bufp, "%-12s ", 
+				(mounts[i]->dev == NULL)
+				? "" : mounts[i]->dev->name);
 
 			for (p = mounts[i]->mountpoint; *p != NULL; ++p)
 				sprintf(bufp + strlen(bufp), "/%s", *p);
@@ -560,8 +562,8 @@ int cd(const char *path)
 	fs->inodestat(dev, n, &st);
 	if (st.type != FS_DIR)
 		return ENOTADIR;
-	
-	for (p = toks, sz = 0; *p != NULL; ++p)
+
+	for (p = toks, sz = 1; *p != NULL; ++p)
 		sz += strlen(*p) + 1;
 
 	if ((pwd = realloc(pwd, sz + 1)) == NULL)
@@ -831,6 +833,8 @@ const char *vfs_strerror(enum ERROR e)
 		"directory already exists",
 		"device sector size is too big",
 		"device write size is too big ",
+		"out of memory",
+		"function is not implemented",
 		"mount point not found",
 		"path is too long",
 		"maximum number of mount points reached",
@@ -838,8 +842,7 @@ const char *vfs_strerror(enum ERROR e)
 		"run of of file descriptors",
 		"file descriptor is not set",
 		"directory is a mount point",
-		"invalid path",
-		"out of memory"
+		"invalid path"
 	};
 
 	return strerror[-e];

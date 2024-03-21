@@ -7,6 +7,7 @@
 #include "vfs.h"
 #include "filesystem.h"
 #include "sfs.h"
+#include "rfs.h"
 #include "w25.h"
 #include "uartterm.h"
 #include "calls.h"
@@ -40,6 +41,7 @@ static void tim1_init(void);
 static void tim2_init(void);
 static void usart1_init(void);
 static void flash_init(void);
+static void rfs_init(void);
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) 
 {
@@ -543,7 +545,7 @@ int writefile(const char **toks)
 	
 	sscanf(toks[1], "%d", &fd);
 
-	if ((r = write(fd, toks[2], strlen(toks[2]) + 1)) < 0) {
+	if ((r = write(fd, toks[2], strlen(toks[2]))) < 0) {
 		ut_write("error: %s\n\r", vfs_strerror(r));
 		
 		return 0;
@@ -689,6 +691,7 @@ int main(void)
 	usart1_init();
 	spi1_init();
 	flash_init();
+	rfs_init();
 	
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_Base_Start_IT(&htim2);
@@ -732,7 +735,9 @@ int main(void)
 
 	mount(dev + 0, "/", fs + 0);
 	mount(dev + 1, "/dev", fs + 0);
-
+	mount(NULL, "/tmp", fs + 1);
+	format("/tmp");
+	
 	ut_promptcommand();
 
 	while (1) {
@@ -909,6 +914,11 @@ static void flash_init()
 	curdev = dev;
 
 	sfs_getfs(fs + 0);
+}
+
+static void rfs_init()
+{
+	rfs_getfs(fs + 1);
 }
 
 void error_handler(void)

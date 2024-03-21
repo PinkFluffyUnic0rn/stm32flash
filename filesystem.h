@@ -17,6 +17,8 @@
 #define FS_EALREADYEXISTS	0xffffff0b
 #define FS_ESECTORTOOBIG	0xffffff0c
 #define FS_EWRITETOOBIG		0xffffff0d
+#define FS_EOUTOFMEMORY		0xffffff0e
+#define FS_ENOTALPLEMENTED	0xffffff0f
 
 #define fs_uint2interr(v) (-((v) & 0xff))
 #define fs_iserror(v) ((v) > 0xffffff00)

@@ -3,8 +3,6 @@
 
 #include "filesystem.h"
 
-#define SFS_PATHMAX 24
-
 #define sfs_checksum_t uint32_t
 #define sfs_size_t uint32_t
 #define SFS_INODESECTORSCOUNT 15

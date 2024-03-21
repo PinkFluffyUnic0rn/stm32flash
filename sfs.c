@@ -329,10 +329,16 @@ static size_t sfs_inodeextent(struct device *dev,
 
 	// allocate indirect addressing block, if new size requires it
 	if (sz / indirectsize >= 2) {
-		al->blockindirect = sfs_createindirectblock(dev, sb,
-			indirectbuf);
-		if (fs_iserror(al->blockindirect))
-			return al->blockindirect;
+		if (al->blockindirect == 0) {
+			al->blockindirect = sfs_createindirectblock(
+				dev, sb, indirectbuf);
+			if (fs_iserror(al->blockindirect))
+				return al->blockindirect;
+		}
+		else {
+			sfs_readdatablock(dev, al->blockindirect,
+				indirectbuf);
+		}
 
 		indirectidx = (size_t *) (indirectbuf
 			+ sizeof(struct sfs_blockmeta));
@@ -671,7 +677,7 @@ size_t sfs_inoderead(struct device *dev, size_t n, size_t offset,
 		return FS_EWRONGADDR;
 
 	if (offset > in.size)
-		offset = in.size - 1;
+		return 0;;
 
 	if (in.blocks.blockindirect != 0) {
 		size_t r;
@@ -685,7 +691,7 @@ size_t sfs_inoderead(struct device *dev, size_t n, size_t offset,
 			+ sizeof(struct sfs_blockmeta));
 	}
 
-	readsz = min(in.size - offset - 1, sz);
+	readsz = min(in.size - offset, sz);
 	for (i = 0; i < readsz; ) {
 		char sectorbuf[SFS_MAXSECTORSIZE];
 		size_t blockn, b, l;
