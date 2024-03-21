@@ -60,6 +60,7 @@ int ioctl(int fd, int req, ...);
 int lseek(int fd, size_t offset);
 int unlink(const char *path);
 int mkdir(const char *path);
+int mkdev(const char *path, size_t driver, size_t device);
 int lsdir(const char *path, const char **list, char *buf, size_t bufsz);
 const char *vfs_strerror(enum ERROR e);
 

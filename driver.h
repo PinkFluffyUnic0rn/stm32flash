@@ -17,6 +17,7 @@ struct device {
 	int (*read)(void *dev, size_t addr, void *data, size_t sz);
 	int (*write)(void *dev, size_t addr, const void *data,
 		size_t sz);
+	int (*ioctl)(void *dev, int req, ...);
 
 	int (*eraseall)(void *dev);
 	int (*erasesector)(void *dev, size_t addr);

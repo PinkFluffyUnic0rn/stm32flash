@@ -221,6 +221,11 @@ int w25_writesector(void *d, size_t addr, const void *data,
 	return 0;
 }
 
+int w25_ioctl(void *d, int req, ...)
+{
+	return 0;
+}
+
 int initdevice(void *is, struct device *dev)
 {
 	memmove(devs + devcount, is, sizeof(struct w25_device));
@@ -231,6 +236,7 @@ int initdevice(void *is, struct device *dev)
 
 	dev->read = w25_read;
 	dev->write = w25_write;
+	dev->ioctl = w25_ioctl;
 	dev->eraseall = w25_eraseall;
 	dev->erasesector = w25_erasesector;
 	dev->writesector = w25_writesector;
