@@ -9,10 +9,10 @@ Structure
 
  * `main.c` &mdash; a simple terminal program to demonstrate and test
 vfs functions.
- * `uartterm.c` and `uartterm.c` &mdash; API and functions that
+ * `uartterm.c` and `uartterm.h` &mdash; API and functions that
 implement unix-like ternimal working through UART.
  * `driver.h` &mdash; common interface for drivers in this project.
- * `filesystem.h` and `filesystem.c` &mdash; common interface for
+ * `filesystem.c` and `filesystem.h` &mdash; common interface for
 filesystems in this project.
  * `w25.c` and `w25.h` &mdash; driver that implement most basic function
 of W25Q SPI flash memory.
