@@ -26,7 +26,7 @@ related to VFS.
 UART terminal
 =============
 
-UART terminal is used for testing and resembeles typical UNIX shell:
+UART terminal is used for testing and resembeles typical UNIX shell.
 
 Driver commands
 -------------------
