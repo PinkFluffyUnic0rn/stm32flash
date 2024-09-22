@@ -12,7 +12,7 @@
 
 static struct rfs_superblock sb;
 
-size_t rfs_format(struct device *dev)
+size_t rfs_format(struct bdevice *dev)
 {
 	sb.inodecnt = 0;
 	sb.inodealloced = 0;
@@ -22,7 +22,7 @@ size_t rfs_format(struct device *dev)
 	return 0;
 }
 
-size_t rfs_inodecreate(struct device *dev, size_t sz,
+size_t rfs_inodecreate(struct bdevice *dev, size_t sz,
 	enum FS_INODETYPE type)
 {
 	size_t idx;
@@ -76,7 +76,7 @@ static size_t rfs_inoderesize(size_t n, size_t sz)
 	return 0;
 }
 
-size_t rfs_inodedelete(struct device *dev, size_t n)
+size_t rfs_inodedelete(struct bdevice *dev, size_t n)
 {
 	if (n >= sb.inodecnt)
 		return FS_EWRONGADDR;
@@ -87,7 +87,7 @@ size_t rfs_inodedelete(struct device *dev, size_t n)
 	return 0;
 }
 
-size_t rfs_inodeset(struct device *dev, size_t n,
+size_t rfs_inodeset(struct bdevice *dev, size_t n,
 	const void *data, size_t sz)
 {
 	size_t r;
@@ -103,7 +103,8 @@ size_t rfs_inodeset(struct device *dev, size_t n,
 	return 0;
 }
 
-size_t rfs_inodeget(struct device *dev, size_t n, void *data, size_t sz)
+size_t rfs_inodeget(struct bdevice *dev, size_t n, void *data,
+	size_t sz)
 {
 	if (n >= sb.inodecnt)
 		return FS_EWRONGADDR;
@@ -116,7 +117,7 @@ size_t rfs_inodeget(struct device *dev, size_t n, void *data, size_t sz)
 	return sz;
 }
 
-size_t rfs_inoderead(struct device *dev, size_t n, size_t offset,
+size_t rfs_inoderead(struct bdevice *dev, size_t n, size_t offset,
 	void *data, size_t sz)
 {
 	if (n >= sb.inodecnt)
@@ -132,7 +133,7 @@ size_t rfs_inoderead(struct device *dev, size_t n, size_t offset,
 	return sz;
 }
 
-size_t rfs_inodewrite(struct device *dev, size_t n, size_t offset,
+size_t rfs_inodewrite(struct bdevice *dev, size_t n, size_t offset,
 	const void *data, size_t sz)
 {
 	struct rfs_inode *in;
@@ -151,7 +152,7 @@ size_t rfs_inodewrite(struct device *dev, size_t n, size_t offset,
 	return 0;
 }
 
-size_t rfs_inodesettype(struct device *dev, size_t n,
+size_t rfs_inodesettype(struct bdevice *dev, size_t n,
 	enum FS_INODETYPE type)
 {
 	if (n >= sb.inodecnt)
@@ -162,7 +163,7 @@ size_t rfs_inodesettype(struct device *dev, size_t n,
 	return 0;
 }
 
-size_t rfs_inodestat(struct device *dev, size_t n,
+size_t rfs_inodestat(struct bdevice *dev, size_t n,
 	struct fs_dirstat *st)
 {
 	if (n >= sb.inodecnt)
@@ -174,14 +175,14 @@ size_t rfs_inodestat(struct device *dev, size_t n,
 	return 0;
 }
 
-size_t rfs_dumpsuperblock(struct device *dev, void *sba)
+size_t rfs_dumpsuperblock(struct bdevice *dev, void *sba)
 {
 	memcpy(sba, &sb, sizeof(struct rfs_superblock));
 	
 	return 0;
 }
 
-size_t rfs_dumpinode(struct device *dev, size_t n, void *in)
+size_t rfs_dumpinode(struct bdevice *dev, size_t n, void *in)
 {
 	if (n >= sb.inodecnt)
 		return FS_EWRONGADDR;
@@ -191,7 +192,7 @@ size_t rfs_dumpinode(struct device *dev, size_t n, void *in)
 	return 0;
 }
 
-size_t rfs_dumpblockmeta(struct device *dev, size_t n, void *meta)
+size_t rfs_dumpblockmeta(struct bdevice *dev, size_t n, void *meta)
 {
 	return FS_ENOTALPLEMENTED;
 }

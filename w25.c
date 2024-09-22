@@ -226,7 +226,7 @@ int w25_ioctl(void *d, int req, ...)
 	return 0;
 }
 
-int initdevice(void *is, struct device *dev)
+int initdevice(void *is, struct bdevice *dev)
 {
 	memmove(devs + devcount, is, sizeof(struct w25_device));
 	

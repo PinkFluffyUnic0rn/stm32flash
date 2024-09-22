@@ -47,7 +47,7 @@ enum ERROR {
 
 int vfsinit();
 int format(const char *target);
-int mount(struct device *dev, const char *target,
+int mount(struct bdevice *dev, const char *target,
 	const struct filesystem *fs);
 int umount(const char *target);
 int mountlist(const char **list, char *buf, size_t bufsz);
@@ -60,7 +60,7 @@ int ioctl(int fd, int req, ...);
 int lseek(int fd, size_t offset);
 int unlink(const char *path);
 int mkdir(const char *path);
-int mkdev(const char *path, size_t driver, size_t device);
+int mkdev(const char *path, size_t driver, size_t bdevice);
 int lsdir(const char *path, const char **list, char *buf, size_t bufsz);
 const char *vfs_strerror(enum ERROR e);
 

@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 struct vfsmount {
-	struct device 			*dev;
+	struct bdevice 			*dev;
 	const char			*mountpoint[PATHMAXTOK];
 	char				*mntpntbuf;
 	const struct filesystem		*fs;
@@ -230,7 +230,7 @@ static size_t dirlookup(const char **toks, struct lookupres *lr,
 	for (p = toks; *p != NULL; ++p) {
 		struct fs_dirstat st;
 		const struct filesystem *fs;
-		struct device *dev;
+		struct bdevice *dev;
 
 		curpath[c++] = *p;
 		curpath[c] = NULL;
@@ -292,7 +292,7 @@ static size_t diradd(struct inode *in, const char *name, size_t n)
 {
 	char buf[DIRMAX];
 	struct fs_dirstat st;
-	struct device *dev;
+	struct bdevice *dev;
 	const struct filesystem *fs;
 	size_t offset, parn, r, b;
 
@@ -333,7 +333,7 @@ static size_t dirdeleteinode(struct inode *in, size_t n)
 {
 	char buf[DIRMAX];
 	struct fs_dirstat st;
-	struct device *dev;
+	struct bdevice *dev;
 	const struct filesystem *fs;
 	size_t offset, last, parn, r, b;
 
@@ -374,7 +374,7 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 	char pathbuf[PATHMAX];
 	const char *name;
 	struct lookupres lr;
-	struct device *dev;
+	struct bdevice *dev;
 	const struct filesystem *fs;
 	size_t n, rr;
 	int r, tokc;
@@ -410,7 +410,7 @@ static int mkfile(const char *path, enum FS_INODETYPE type)
 	return fs_uint2interr(diradd(&(lr.inode), name, n));
 }
 
-static int makeroot(struct device *dev, const struct filesystem *fs)
+static int makeroot(struct bdevice *dev, const struct filesystem *fs)
 {
 	size_t b, n;
 
@@ -434,7 +434,7 @@ int vfsinit()
 	return 0;
 }
 
-int mount(struct device *dev, const char *target,
+int mount(struct bdevice *dev, const char *target,
 	const struct filesystem *fs)
 {
 	const char *toks[PATHMAXTOK];
@@ -549,7 +549,7 @@ int cd(const char *path)
 	char pathbuf[PATHMAX];
 	struct lookupres lr;
 	const struct filesystem *fs;
-	struct device *dev;
+	struct bdevice *dev;
 	struct fs_dirstat st;
 	const char **p;
 	int r;
@@ -678,7 +678,7 @@ int read(int fd, void *buf, size_t count)
 	if (fs_iserror(r))
 		return fs_uint2interr(r);
 
-	files[fd]->offset += count;
+	files[fd]->offset += r;
 
 	return r;
 }
@@ -706,7 +706,7 @@ static int dirisempty(struct inode *in)
 {
 	char buf[DIRMAX];
 	struct fs_dirstat st;
-	struct device *dev;
+	struct bdevice *dev;
 	const struct filesystem *fs;
 	size_t r, n, nn;
 
@@ -732,7 +732,7 @@ int unlink(const char *path)
 	const char *toks[PATHMAXTOK];
 	char pathbuf[PATHMAX];
 	struct lookupres lr;
-	struct device *dev;
+	struct bdevice *dev;
 	const struct filesystem *fs;
 	size_t n, parn, rr;
 	int r, tokc;
@@ -784,7 +784,7 @@ int mkdev(const char *path, size_t driverid, size_t deviceid)
 	const char *toks[PATHMAXTOK];
 	char pathbuf[PATHMAX];
 	struct lookupres lr;
-	struct device *dev;
+	struct bdevice *dev;
 	const struct filesystem *fs;
 	struct devfile df;
 	int r;
@@ -822,7 +822,7 @@ int lsdir(const char *path, const char **list, char *buf, size_t bufsz)
 	char pathbuf[PATHMAX];
 	struct lookupres lr;
 	const struct filesystem *fs;
-	struct device *dev;
+	struct bdevice *dev;
 	int r;
 	size_t n, offset, rr, c;
 

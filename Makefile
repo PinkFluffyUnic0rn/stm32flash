@@ -17,7 +17,7 @@ SFLAGS=-mcpu=cortex-m4 -c -x assembler-with-cpp --specs=nano.specs \
 all: load
 
 load: prog.elf
-	openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
+	LD_LIBRARY_PATH= openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
 		-c "program prog.elf verify reset exit"
 
 prog.elf: $(OBJECTS) ./startup.o

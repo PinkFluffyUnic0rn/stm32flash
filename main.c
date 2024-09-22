@@ -29,10 +29,13 @@ TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart1;
 
 struct driver drivers[8];
-struct device dev[8];
+struct bdevice dev[8];
 struct filesystem fs[8];
 
-struct device *curdev;
+struct bdevice *curdev;
+
+// for heap test
+void *_sbrk(ptrdiff_t incr);
 
 void systemclock_config(void);
 static void gpio_init(void);
@@ -49,7 +52,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 int printhelp()
 {
-	ut_write("\r\nraw driver commands:\n\r");
+	ut_write("\r\ndriver commands:\n\r");
 
 	ut_write("\t%-23s%-32s\n\r",
 		"sd [dev]", "set current device to [dev]");
@@ -60,7 +63,7 @@ int printhelp()
 	ut_write("\t%-23s%-32s\n\r",
 		"wd [addr] [str]","write string [str] into [addr]");
 
-	ut_write("\r\nraw filesystem commands:\n\r");
+	ut_write("\r\nfilesystem commands:\n\r");
 	
 	ut_write("\t%-23s%-32s\n\r",
 		"f", "format choosen device");
@@ -82,6 +85,14 @@ int printhelp()
 	ut_write("\t%-23s%-32s\n\r",
 		"g [addr]",
 		"get data from inode with address [addr]");
+
+	ut_write("\t%-23s%-32s\n\r",
+		"r [addr] [off] [sz]",
+		"read [sz] bytes from inode with address `[addr]` with offset of [off] bytes");
+
+	ut_write("\t%-23s%-32s\n\r",
+		"w [addr] [off] [data]",
+		"write data into inode with address `[addr]` with offset of [off] bytes");
 
 	ut_write("\r\nvirtual filesystem commands:\n\r");
 	
@@ -106,8 +117,8 @@ int printhelp()
 		"open file with [path], if [flags] is 'c', create it");
 
 	ut_write("\t%-23s%-32s\n\r",
-		"read [fd]",
-		"read opened file with descriptor [fd]");
+		"read [fd] [sz]",
+		"read [sz] bytes from opened file with descriptor [fd]");
 
 	ut_write("\t%-23s%-32s\n\r",
 		"write [fd] [data]",
@@ -346,12 +357,10 @@ int writeinode(const char **toks)
 
 int createbiginode(const char **toks)
 {
-	size_t sz, addr, insz, i;
+	size_t addr, insz, i;
 	char buf[5000];
 
 	insz = 5000;
-
-	sscanf(toks[1], "%d", &sz);
 
 	ut_write("new inode address: %x\n\r",
 		(addr = fs[0].inodecreate(curdev, 32, FS_FILE)));
@@ -447,7 +456,7 @@ int dump(const char **toks)
 
 int mounthandler(const char **toks)
 {
-	struct device *d;
+	struct bdevice *d;
 	int r;
 
 	if (strcmp(toks[1], dev[0].name) == 0)
